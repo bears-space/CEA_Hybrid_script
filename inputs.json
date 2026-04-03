@@ -1,0 +1,57 @@
+{
+  "target_thrust_n": 3000.0,
+  "pc_bar": 30.0,
+  "iac": true,
+  "summary_metric": "isp_vac_mps",
+  "output_dir": "outputs",
+  "plots": {
+    "enabled": true,
+    "metric": "isp_vac_s",
+    "output_dir": "plots"
+  },
+  "sweeps": {
+    "ae_at": {
+      "start": 3.0,
+      "stop": 24.0,
+      "step": 3.0
+    },
+    "of": {
+      "start": 1.5,
+      "stop": 13.5,
+      "count": 97
+    },
+    "abs_volume_fractions": [
+      0.0,
+      0.05,
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3
+    ],
+    "fuel_temperatures_k": [
+      263.15,
+      293.15,
+      323.15
+    ],
+    "oxidizer_temperatures_k": [
+      273.15,
+      293.15,
+      313.15
+    ]
+  },
+  "species": {
+    "oxidizer": "N2O",
+    "fuel_main": "C2H4",
+    "styrene": "C8H8,styrene",
+    "butadiene": "C4H6,butadiene"
+  },
+  "densities_g_cm3": {
+    "paraffin": 0.93,
+    "abs": 1.05
+  },
+  "abs_surrogate": {
+    "styrene_share": 55.0,
+    "butadiene_share": 20.0
+  }
+}
