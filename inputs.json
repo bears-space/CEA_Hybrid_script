@@ -2,6 +2,7 @@
   "target_thrust_n": 3000.0,
   "pc_bar": 30.0,
   "iac": true,
+  "cpu_workers": "auto",
   "summary_metric": "isp_vac_mps",
   "output_dir": "outputs",
   "plots": {
@@ -30,14 +31,20 @@
       0.3
     ],
     "fuel_temperatures_k": [
-      263.15,
+      273.15,
+      283.15,
       293.15,
+      303.15,
+      313.15,
       323.15
     ],
     "oxidizer_temperatures_k": [
       273.15,
+      283.15,
       293.15,
-      313.15
+      303.15,
+      313.15,
+      323.15
     ]
   },
   "species": {

@@ -1,11 +1,11 @@
 # CEA Hybrid Script
 
-This project runs NASA CEA-based performance calculations for a hybrid rocket concept using nitrous oxide oxidizer, a paraffin surrogate fuel, and an ABS surrogate blend. The script reads sweep settings from `inputs.json`, evaluates every parameter combination, writes CSV outputs, and generates organized SVG dashboards for quick visual comparison.
+This project runs NASA CEA-based performance calculations for a hybrid rocket concept using nitrous oxide oxidizer, a paraffin surrogate fuel, and an ABS surrogate blend. The project includes both a sweep script and a local browser UI for running parameter studies, inspecting plots, and comparing optimized designs.
 
 ## What It Does
 
 - Evaluates hybrid rocket performance with the `cea` Python package
-- Sweeps across user-defined `O/F`, `Ae/At`, fuel temperature, oxidizer temperature, and ABS volume fraction values
+- Sweeps across user-defined `O/F` and `Ae/At` values, with configurable reactant temperature and infill target
 - Writes full raw-case CSV data plus summary CSV files for best cases
 - Generates organized SVG overview plots and temperature-pair dashboards automatically
 - Reports key outputs such as `Isp`, `Cf`, mass flow, chamber temperature, and nozzle dimensions
@@ -13,6 +13,8 @@ This project runs NASA CEA-based performance calculations for a hybrid rocket co
 ## Project Files
 
 - `main.py`: main analysis script
+- `ui_server.py`: local browser UI server
+- `ui/`: HTML, CSS, and JavaScript for the interactive interface
 - `inputs.json`: sweep definitions, output path, and model settings
 - `test.py`: small direct CEA sanity check
 - `outputs/`: generated CSV files after a run
@@ -27,7 +29,39 @@ This project runs NASA CEA-based performance calculations for a hybrid rocket co
 
 If you use the included virtual environment, activate it before running the script.
 
-## How To Use
+## Browser UI
+
+Run the local UI server:
+
+```powershell
+python ui_server.py
+```
+
+Then open `http://127.0.0.1:8000` in a browser.
+
+The UI includes:
+
+- input controls for thrust, chamber pressure, `Ae/At`, `O/F`, fixed reactant temperature, and desired infill percentage
+- hybrid sizing inputs for `D_p`, burn time, target `L*`, and either a literature regression model or manual `a,n` override
+- interactive in-browser plots generated from raw sweep data
+- zoom, pan, legend toggle, legend highlight, and chart expansion
+- optimized design cards, hybrid layout diagrams, and compact engineering tables for the selected fixed conditions
+
+Hybrid sizing notes:
+
+- `D_p` is the initial circular fuel-port diameter
+- `G_ox`, volumetric loading, chamber diameter, and total fuel mass are derived from the sweep result plus `D_p` and burn time
+- pre-chamber length uses an empirical axial showerhead estimate
+- post-chamber length is solved from the requested characteristic length `L*`; if the grain plus pre-chamber already exceed that target, the solved post-chamber length is zero
+
+## Performance
+
+- `cpu_workers` in `inputs.json` controls sweep parallelism
+- Use `"auto"` to use all logical CPU threads
+- Use `1` to force single-process execution for debugging
+- GPU acceleration is not enabled: the current `cea` backend is CPU-bound and this project does not include CUDA or GPU kernels
+
+## Script Workflow
 
 1. Edit `inputs.json` to define the sweep ranges or explicit value lists.
 2. Set `target_thrust_n`, `pc_bar`, and the sweep inputs you want to study.

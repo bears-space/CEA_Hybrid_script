@@ -2,7 +2,9 @@ import csv
 import html
 import json
 import math
+import os
 import shutil
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from itertools import product
 from pathlib import Path
 
@@ -12,6 +14,7 @@ import numpy as np
 
 G0_MPS2 = 9.80665
 INPUTS_PATH = Path(__file__).with_name("inputs.json")
+DEFAULT_CPU_WORKERS = os.cpu_count() or 1
 PLOT_COLORS = [
     "#0b7285",
     "#c92a2a",
@@ -58,6 +61,18 @@ FAILURE_FIELDS = [
     "ae_at",
     "reason",
 ]
+_WORKER_CONFIG = None
+_WORKER_REACTANTS = None
+_WORKER_SOLVER = None
+
+
+class SweepCancelled(Exception):
+    pass
+
+
+def ensure_finite(value, name):
+    if not math.isfinite(float(value)):
+        raise ValueError(f"{name} must be finite.")
 
 
 def expand_sweep_values(spec, name):
@@ -105,8 +120,7 @@ def expand_sweep_values(spec, name):
     return [float(value) for value in values]
 
 
-def load_config(path):
-    raw = json.loads(path.read_text(encoding="utf-8"))
+def build_config(raw):
     sweeps = raw["sweeps"]
     abs_surrogate = raw["abs_surrogate"]
     densities = raw["densities_g_cm3"]
@@ -122,6 +136,7 @@ def load_config(path):
         "target_thrust_n": float(raw["target_thrust_n"]),
         "pc_bar": float(raw["pc_bar"]),
         "iac": bool(raw.get("iac", True)),
+        "cpu_workers": raw.get("cpu_workers", "auto"),
         "summary_metric": raw.get("summary_metric", "isp_vac_mps"),
         "output_dir": Path(raw.get("output_dir", "outputs")),
         "plots": {
@@ -162,7 +177,14 @@ def load_config(path):
     return config
 
 
+def load_config(path):
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return build_config(raw)
+
+
 def validate_config(config):
+    ensure_finite(config["target_thrust_n"], "target_thrust_n")
+    ensure_finite(config["pc_bar"], "pc_bar")
     if config["target_thrust_n"] <= 0.0:
         raise ValueError("target_thrust_n must be positive.")
     if config["pc_bar"] <= 0.0:
@@ -177,17 +199,28 @@ def validate_config(config):
         )
 
     for value in config["ae_at_values"]:
+        ensure_finite(value, "Ae/At")
         if value <= 0.0:
             raise ValueError("All Ae/At values must be positive.")
     for value in config["of_values"]:
+        ensure_finite(value, "O/F")
         if value <= 0.0:
             raise ValueError("All O/F values must be positive.")
     for value in config["abs_volume_fractions"]:
+        ensure_finite(value, "ABS volume fraction")
         if not 0.0 <= value <= 1.0:
             raise ValueError("ABS volume fractions must be between 0.0 and 1.0.")
     for value in config["fuel_temperatures_k"] + config["oxidizer_temperatures_k"]:
+        ensure_finite(value, "Temperature")
         if value <= 0.0:
             raise ValueError("All temperatures must be positive in Kelvin.")
+    if config["cpu_workers"] != "auto":
+        try:
+            cpu_workers = int(config["cpu_workers"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("cpu_workers must be 'auto' or a positive integer.") from exc
+        if cpu_workers <= 0:
+            raise ValueError("cpu_workers must be positive.")
 
 
 def abs_mass_fraction_from_volume_fraction(
@@ -212,6 +245,70 @@ def build_cea_objects(config):
     products = cea.Mixture(reactant_names, products_from_reactants=True)
     solver = cea.RocketSolver(products, reactants=reactants)
     return reactant_names, reactants, solver
+
+
+def resolve_cpu_workers(config):
+    if config["cpu_workers"] == "auto":
+        return DEFAULT_CPU_WORKERS
+    return max(1, int(config["cpu_workers"]))
+
+
+def iter_case_inputs(config):
+    return product(
+        config["abs_volume_fractions"],
+        config["fuel_temperatures_k"],
+        config["oxidizer_temperatures_k"],
+        config["ae_at_values"],
+        config["of_values"],
+    )
+
+
+def _init_worker(config):
+    global _WORKER_CONFIG, _WORKER_REACTANTS, _WORKER_SOLVER
+    _WORKER_CONFIG = config
+    _, _WORKER_REACTANTS, _WORKER_SOLVER = build_cea_objects(config)
+
+
+def _run_case_in_worker(case_input):
+    abs_vol_frac, fuel_temp_k, oxidizer_temp_k, ae_at, of_ratio = case_input
+    try:
+        result = run_case(
+            _WORKER_CONFIG,
+            _WORKER_REACTANTS,
+            _WORKER_SOLVER,
+            abs_vol_frac,
+            fuel_temp_k,
+            oxidizer_temp_k,
+            of_ratio,
+            ae_at,
+        )
+    except Exception as exc:
+        return {
+            "kind": "failure",
+            "payload": {
+                "abs_vol_frac": abs_vol_frac,
+                "fuel_temp_k": fuel_temp_k,
+                "oxidizer_temp_k": oxidizer_temp_k,
+                "of": of_ratio,
+                "ae_at": ae_at,
+                "reason": str(exc),
+            },
+        }
+
+    if result is None:
+        return {
+            "kind": "failure",
+            "payload": {
+                "abs_vol_frac": abs_vol_frac,
+                "fuel_temp_k": fuel_temp_k,
+                "oxidizer_temp_k": oxidizer_temp_k,
+                "of": of_ratio,
+                "ae_at": ae_at,
+                "reason": "CEA did not converge",
+            },
+        }
+
+    return {"kind": "success", "payload": result}
 
 
 def run_case(
@@ -263,6 +360,15 @@ def run_case(
     isp_mps = float(solution.Isp[exit_index])
     isp_vac_mps = float(solution.Isp_vacuum[exit_index])
     cstar = float(solution.c_star[chamber_index])
+    for value, name in [
+        (cf, "CEA thrust coefficient"),
+        (isp_mps, "CEA sea-level Isp"),
+        (isp_vac_mps, "CEA vacuum Isp"),
+        (cstar, "CEA c*"),
+    ]:
+        ensure_finite(value, name)
+        if value <= 0.0:
+            raise ValueError(f"{name} must be positive.")
     pc_pa = config["pc_bar"] * 1e5
 
     at_m2 = config["target_thrust_n"] / (cf * pc_pa)
@@ -819,14 +925,10 @@ def generate_plots(config, output_dir, cases, best_by_ae_at, best_overall):
     return generated
 
 
-def main():
-    config = load_config(INPUTS_PATH)
-    output_dir = INPUTS_PATH.parent / config["output_dir"]
-    prepare_output_dir(output_dir)
-    _, reactants, solver = build_cea_objects(config)
-
+def run_sweep(config, progress_callback=None, cancel_event=None):
     cases = []
     failures = []
+    cpu_workers = resolve_cpu_workers(config)
     total_combinations = (
         len(config["abs_volume_fractions"])
         * len(config["fuel_temperatures_k"])
@@ -834,64 +936,77 @@ def main():
         * len(config["ae_at_values"])
         * len(config["of_values"])
     )
+    completed = 0
 
-    print(f"Loaded inputs from {INPUTS_PATH}")
-    print(f"Writing CSV outputs to {output_dir}")
-    print(
-        "Sweep sizes: "
-        f"ABS={len(config['abs_volume_fractions'])}, "
-        f"fuel T={len(config['fuel_temperatures_k'])}, "
-        f"oxidizer T={len(config['oxidizer_temperatures_k'])}, "
-        f"Ae/At={len(config['ae_at_values'])}, "
-        f"O/F={len(config['of_values'])}"
-    )
-    print(f"Total combinations: {total_combinations}")
+    def update_progress():
+        if progress_callback is not None:
+            progress_callback(completed, total_combinations)
 
-    for abs_vol_frac, fuel_temp_k, oxidizer_temp_k, ae_at, of_ratio in product(
-        config["abs_volume_fractions"],
-        config["fuel_temperatures_k"],
-        config["oxidizer_temperatures_k"],
-        config["ae_at_values"],
-        config["of_values"],
-    ):
+    update_progress()
+
+    if cpu_workers == 1:
+        _init_worker(config)
+        for case_input in iter_case_inputs(config):
+            if cancel_event is not None and cancel_event.is_set():
+                raise SweepCancelled("Sweep cancelled.")
+            item = _run_case_in_worker(case_input)
+            if item["kind"] == "success":
+                cases.append(item["payload"])
+            else:
+                failures.append(item["payload"])
+            completed += 1
+            update_progress()
+    else:
+        executor = ProcessPoolExecutor(
+            max_workers=cpu_workers,
+            initializer=_init_worker,
+            initargs=(config,),
+        )
+        case_iter = iter(iter_case_inputs(config))
+        max_pending = max(cpu_workers * 4, cpu_workers)
+        pending = {}
+
+        def submit_next():
+            try:
+                case_input = next(case_iter)
+            except StopIteration:
+                return False
+            future = executor.submit(_run_case_in_worker, case_input)
+            pending[future] = case_input
+            return True
+
         try:
-            result = run_case(
-                config,
-                reactants,
-                solver,
-                abs_vol_frac,
-                fuel_temp_k,
-                oxidizer_temp_k,
-                of_ratio,
-                ae_at,
-            )
-        except Exception as exc:
-            failures.append(
-                {
-                    "abs_vol_frac": abs_vol_frac,
-                    "fuel_temp_k": fuel_temp_k,
-                    "oxidizer_temp_k": oxidizer_temp_k,
-                    "of": of_ratio,
-                    "ae_at": ae_at,
-                    "reason": str(exc),
-                }
-            )
-            continue
+            while len(pending) < max_pending and submit_next():
+                pass
 
-        if result is None:
-            failures.append(
-                {
-                    "abs_vol_frac": abs_vol_frac,
-                    "fuel_temp_k": fuel_temp_k,
-                    "oxidizer_temp_k": oxidizer_temp_k,
-                    "of": of_ratio,
-                    "ae_at": ae_at,
-                    "reason": "CEA did not converge",
-                }
-            )
-            continue
-
-        cases.append(result)
+            while pending:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise SweepCancelled("Sweep cancelled.")
+                done, _ = wait(
+                    tuple(pending.keys()),
+                    timeout=0.2,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not done:
+                    continue
+                for future in done:
+                    pending.pop(future, None)
+                    item = future.result()
+                    if item["kind"] == "success":
+                        cases.append(item["payload"])
+                    else:
+                        failures.append(item["payload"])
+                    completed += 1
+                    update_progress()
+                while len(pending) < max_pending and submit_next():
+                    pass
+        except Exception:
+            for future in pending:
+                future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        else:
+            executor.shutdown()
 
     cases.sort(
         key=lambda row: (
@@ -912,21 +1027,39 @@ def main():
         )
     )
 
-    write_csv(output_dir / "all_cases.csv", cases, CASE_FIELDS)
-    write_csv(output_dir / "failures.csv", failures, FAILURE_FIELDS)
-
     best_by_ae_at = select_best_rows(
         cases,
         ["abs_vol_frac", "fuel_temp_k", "oxidizer_temp_k", "ae_at"],
         config["summary_metric"],
     )
-    write_csv(output_dir / "best_by_ae_at.csv", best_by_ae_at, CASE_FIELDS)
-
     best_overall = select_best_rows(
         cases,
         ["abs_vol_frac", "fuel_temp_k", "oxidizer_temp_k"],
         config["summary_metric"],
     )
+
+    return {
+        "cases": cases,
+        "failures": failures,
+        "best_by_ae_at": best_by_ae_at,
+        "best_overall": best_overall,
+        "total_combinations": total_combinations,
+        "cpu_workers": cpu_workers,
+        "backend": "cpu-multiprocessing" if cpu_workers > 1 else "cpu-single-process",
+        "gpu_enabled": False,
+    }
+
+
+def write_outputs(output_dir, config, sweep_results):
+    cases = sweep_results["cases"]
+    failures = sweep_results["failures"]
+    best_by_ae_at = sweep_results["best_by_ae_at"]
+    best_overall = sweep_results["best_overall"]
+
+    prepare_output_dir(output_dir)
+    write_csv(output_dir / "all_cases.csv", cases, CASE_FIELDS)
+    write_csv(output_dir / "failures.csv", failures, FAILURE_FIELDS)
+    write_csv(output_dir / "best_by_ae_at.csv", best_by_ae_at, CASE_FIELDS)
     write_csv(output_dir / "best_overall.csv", best_overall, CASE_FIELDS)
 
     for abs_vol_frac in config["abs_volume_fractions"]:
@@ -938,9 +1071,31 @@ def main():
         )
 
     plot_paths = generate_plots(config, output_dir, cases, best_by_ae_at, best_overall)
+    return plot_paths
 
-    print(f"Converged cases: {len(cases)}")
-    print(f"Failed or unconverged cases: {len(failures)}")
+
+def main():
+    config = load_config(INPUTS_PATH)
+    output_dir = INPUTS_PATH.parent / config["output_dir"]
+    sweep_results = run_sweep(config)
+
+    print(f"Loaded inputs from {INPUTS_PATH}")
+    print(f"Writing CSV outputs to {output_dir}")
+    print(
+        "Sweep sizes: "
+        f"ABS={len(config['abs_volume_fractions'])}, "
+        f"fuel T={len(config['fuel_temperatures_k'])}, "
+        f"oxidizer T={len(config['oxidizer_temperatures_k'])}, "
+        f"Ae/At={len(config['ae_at_values'])}, "
+        f"O/F={len(config['of_values'])}"
+    )
+    print(f"Total combinations: {sweep_results['total_combinations']}")
+    print(f"Compute backend: {sweep_results['backend']} ({sweep_results['cpu_workers']} worker(s))")
+
+    plot_paths = write_outputs(output_dir, config, sweep_results)
+
+    print(f"Converged cases: {len(sweep_results['cases'])}")
+    print(f"Failed or unconverged cases: {len(sweep_results['failures'])}")
     print(f"Wrote {output_dir / 'all_cases.csv'}")
     print(f"Wrote {output_dir / 'best_by_ae_at.csv'}")
     print(f"Wrote {output_dir / 'best_overall.csv'}")
