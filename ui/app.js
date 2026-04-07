@@ -1,10 +1,12 @@
-const palette = ["#4de2cf", "#ffb454", "#7ab7ff", "#d4a5ff", "#ff7d96", "#b7ef57", "#60f0db", "#f6a6db", "#ffd166"];
+﻿const palette = ["#0f766e", "#b86a2d", "#345c7c", "#7c5aa6", "#a3475d", "#5c7f37", "#2d8d88", "#9a6742", "#536a7a"];
+const THEME_STORAGE_KEY = "ceaHybridTheme";
 const state = {
   defaults: null,
   results: null,
   pollTimer: null,
   renderedJobId: null,
   lastStatusKey: null,
+  downloadUrls: [],
 };
 
 function $(id) {
@@ -15,7 +17,8 @@ function fmt(value, digits = 2) {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "-";
   }
-  return Number(value).toFixed(digits).replace(/\.?0+$/, "");
+  const text = Number(value).toFixed(digits);
+  return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
 }
 
 function escapeHtml(value) {
@@ -27,11 +30,111 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function infoDot(text, label = "More information") {
+  return `<button class="info-dot" type="button" data-tip="${escapeHtml(text)}" aria-label="${escapeHtml(label)}">i</button>`;
+}
+
+function labelWithTip(label, tipText, labelText) {
+  return `${escapeHtml(label)} ${infoDot(tipText, labelText || `Explain ${label}`)}`;
+}
+
+function applyTheme(theme) {
+  const normalizedTheme = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = normalizedTheme;
+  const isDark = normalizedTheme === "dark";
+  $("themeToggle").setAttribute("aria-pressed", String(isDark));
+  $("themeToggleValue").textContent = isDark ? "On" : "Off";
+  localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+}
+
+function initializeTheme() {
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  applyTheme(savedTheme || document.body.dataset.theme || "dark");
+}
+
+function toggleTheme() {
+  applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
+}
+
+function renderCalculationArticle(results = null) {
+  const metricLabel = results?.meta?.selected_metric_label || state.defaults?.selected_metric || "selected metric";
+  const fuelTemperature = results?.controls?.fuel_temperature_k ?? state.defaults?.fuel_temperature_k;
+  const oxidizerTemperature = results?.controls?.oxidizer_temperature_k ?? state.defaults?.oxidizer_temperature_k;
+  const infill = results?.controls?.desired_infill_percent ?? state.defaults?.desired_infill_percent;
+
+  $("calculationArticle").innerHTML = `
+    <div class="calc-article-shell">
+      <nav class="calc-article-nav">
+        <h3>Contents</h3>
+        <a href="#calc-thermo">1. Thermochemical core</a>
+        <a href="#calc-selection">2. Variable selection</a>
+        <a href="#calc-limits">3. Model limits</a>
+        <a href="#calc-references">4. References</a>
+      </nav>
+      <div class="calc-article-body">
+        <div class="calc-callout">
+          The current UI state is configured around <strong>${escapeHtml(String(metricLabel))}</strong>,
+          fuel temperature <strong>${fuelTemperature !== undefined ? `${fmt(fuelTemperature, 2)} K` : "not yet loaded"}</strong>,
+          oxidizer temperature <strong>${oxidizerTemperature !== undefined ? `${fmt(oxidizerTemperature, 2)} K` : "not yet loaded"}</strong>,
+          and infill <strong>${infill !== undefined ? `${fmt(infill, 1)}%` : "not yet loaded"}</strong>.
+          This NASA CEA setup is specifically for an N2O and paraffin engine with ABS structure. The backend reports CEA outputs and minimal thrust-normalized nozzle sizing derived from those CEA outputs.
+        </div>
+
+        <section class="calc-section" id="calc-thermo">
+          <h3>1. Thermochemical core</h3>
+          <p>
+            The backend evaluates each N2O/paraffin/ABS-structure sweep point with NASA CEA in rocket mode. Chamber equilibrium, nozzle expansion,
+            <code>Isp</code>, <code>Isp_vac</code>, <code>c*</code>, exit pressure, exit temperature, Mach number,
+            molecular weight, gamma, and thrust coefficient come from the CEA solution object.
+          </p>
+          <p>
+            Hybrid grain, chamber, injector, and regression sizing remain removed. The only project-side sizing now
+            derives nozzle throat area from CEA <code>c*</code>, target mass flow, and chamber pressure so the throat is choked.
+          </p>
+        </section>
+
+        <section class="calc-section" id="calc-selection">
+          <h3>2. Variable selection</h3>
+          <p>
+            The output columns and selectable plot metrics are defined in <code>cea_hybrid/variables.py</code>.
+            Each variable is tagged as input, CEA, or minimal sizing, with a short description.
+          </p>
+          <div class="calc-equation">input: abs_vol_frac, fuel_temp_k, oxidizer_temp_k, of, pc_bar, ae_at
+CEA: cf, isp_mps, isp_vac_mps, cstar_mps, tc_k, mach_t, pe_bar, te_k, mach_e, gamma_e, mw_e
+sizing: mdot_total_kg_s, at_m2, ae_m2, dt_mm, de_mm, de_cm</div>
+          <p>
+            To add or remove reported values later, change that file first. The CSV writer, plot metric selector,
+            labels, and UI payloads all consume the same selection.
+          </p>
+        </section>
+
+        <section class="calc-section" id="calc-limits">
+          <h3>3. Model limits</h3>
+          <ul>
+            <li>It does not resolve finite-rate combustion, droplet breakup, or injector spray physics. NASA CEA assumes chemical equilibrium for the solved state.</li>
+            <li>It does not perform hybrid regression, injector, grain, chamber, or structural sizing.</li>
+            <li>Nozzle sizing assumes circular-equivalent throat and exit areas and uses CEA <code>c*</code> and <code>Isp</code>.</li>
+          </ul>
+        </section>
+
+        <section class="calc-section calc-reference" id="calc-references">
+          <h3>4. References</h3>
+          <ol>
+            <li><a href="https://www.nasa.gov/glenn/research/chemical-equilibrium-with-applications/" target="_blank" rel="noreferrer">NASA Glenn Research Center, Chemical Equilibrium with Applications (CEA)</a>. Official overview of the CEA code family used by the backend.</li>
+            <li><a href="https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19960044559.pdf" target="_blank" rel="noreferrer">McBride, B. J., and Gordon, S., NASA RP-1311, CEA Users Manual</a>. Primary NASA documentation for the equilibrium rocket solver.</li>
+            <li><a href="https://ntrs.nasa.gov/api/citations/20030060681/downloads/20030060681.pdf" target="_blank" rel="noreferrer">Gordon, S., and McBride, B. J., NASA/TM-2003-212145</a>. Reference manual covering rocket variables including thrust coefficient and characteristic velocity relations.</li>
+          </ol>
+        </section>
+      </div>
+    </div>
+  `;
+}
+
 function toast(message, isError = false) {
   const node = $("toast");
   node.textContent = message;
   node.classList.remove("hidden");
-  node.style.background = isError ? "rgba(111, 28, 46, 0.96)" : "rgba(6, 15, 22, 0.96)";
+  node.style.background = isError ? "#b42318" : "#17232d";
   window.clearTimeout(toast._timer);
   toast._timer = window.setTimeout(() => node.classList.add("hidden"), 3200);
 }
@@ -40,8 +143,8 @@ function setFormBusy(isBusy, isStopping = false) {
   document.querySelectorAll("#sweepForm input, #sweepForm select").forEach((node) => {
     node.disabled = isBusy;
   });
-  if (!isBusy) {
-    updateHybridModelControls();
+  if (!isBusy && state.defaults) {
+    updateAdvancedControls();
   }
   const button = $("runButton");
   button.disabled = isStopping;
@@ -97,7 +200,11 @@ function closeModal() {
 
 function populateForm(defaults) {
   $("target_thrust_n").value = defaults.target_thrust_n;
+  $("max_exit_diameter_cm").value = defaults.max_exit_diameter_cm;
+  $("max_area_ratio").value = defaults.max_area_ratio;
+  $("ae_at_cap_mode").value = defaults.ae_at_cap_mode;
   $("pc_bar").value = defaults.pc_bar;
+  $("ae_at_custom_enabled").checked = defaults.ae_at.custom_enabled;
   $("ae_at_start").value = defaults.ae_at.start;
   $("ae_at_stop").value = defaults.ae_at.stop;
   $("ae_at_step").value = defaults.ae_at.step;
@@ -105,85 +212,54 @@ function populateForm(defaults) {
   $("of_stop").value = defaults.of.stop;
   $("of_count").value = defaults.of.count;
   $("desired_infill_percent").value = defaults.desired_infill_percent;
-  $("hybrid_port_diameter_mm").value = defaults.hybrid_design.port_diameter_m * 1000;
-  $("hybrid_burn_time_s").value = defaults.hybrid_design.burn_time_s;
-  $("hybrid_characteristic_length_m").value = defaults.hybrid_design.characteristic_length_m;
-  $("hybrid_regression_a_mps").value = defaults.hybrid_design.regression_a_mps;
-  $("hybrid_regression_n").value = defaults.hybrid_design.regression_n;
 
-  const temperatureSelect = $("reactant_temperature_k");
-  temperatureSelect.innerHTML = "";
-  defaults.reactant_temperature_options.forEach((value) => {
-    const node = document.createElement("option");
-    node.value = String(value);
-    node.textContent = `${fmt(value, 2)} K`;
-    if (Math.abs(Number(value) - Number(defaults.reactant_temperature_k)) < 1e-9) {
-      node.selected = true;
-    }
-    temperatureSelect.appendChild(node);
-  });
+  $("fuel_temperature_k").value = defaults.fuel_temperature_k;
+  $("oxidizer_temperature_k").value = defaults.oxidizer_temperature_k;
 
-  const objectiveSelect = $("objective_metric");
-  objectiveSelect.innerHTML = "";
+  const metricSelect = $("selected_metric");
+  metricSelect.innerHTML = "";
   defaults.metric_options.forEach((option) => {
     const node = document.createElement("option");
     node.value = option.key;
     node.textContent = option.label;
-    if (option.key === defaults.objective_metric) {
+    if (option.key === defaults.selected_metric) {
       node.selected = true;
     }
-    objectiveSelect.appendChild(node);
+    metricSelect.appendChild(node);
   });
-
-  const regressionSelect = $("hybrid_regression_model");
-  regressionSelect.innerHTML = "";
-  defaults.regression_models.forEach((option) => {
-    const node = document.createElement("option");
-    node.value = option.key;
-    node.textContent = option.label;
-    if (option.key === defaults.hybrid_design.regression_model) {
-      node.selected = true;
-    }
-    regressionSelect.appendChild(node);
-  });
-  regressionSelect.onchange = updateHybridModelControls;
-  updateHybridModelControls();
+  updateAdvancedControls();
 }
 
-function updateHybridModelControls() {
-  const regressionModel = $("hybrid_regression_model").value;
-  const isManual = regressionModel === "manual";
-  $("hybrid_regression_a_mps").disabled = !isManual;
-  $("hybrid_regression_n").disabled = !isManual;
-  const modelInfo = state.defaults?.regression_models?.find((item) => item.key === regressionModel);
-  const modelText = modelInfo ? `${modelInfo.description} ` : "";
-  $("hybridSizingExplain").innerHTML = `${modelText}<code>D_p</code> is the initial circular fuel-port diameter. Pre-chamber length uses an empirical axial showerhead estimate, and post-chamber length is solved from the target characteristic length.`;
+function updateAdvancedControls() {
+  const customEnabled = $("ae_at_custom_enabled").checked;
+  $("aeAtCustomFields").disabled = !customEnabled;
+  const capMode = $("ae_at_cap_mode").value;
+  $("max_exit_diameter_cm").disabled = capMode !== "exit_diameter";
+  $("max_area_ratio").disabled = capMode !== "area_ratio";
 }
 
 function buildPayload() {
   return {
     target_thrust_n: Number($("target_thrust_n").value),
+    max_exit_diameter_cm: Number($("max_exit_diameter_cm").value),
+    max_area_ratio: Number($("max_area_ratio").value),
+    ae_at_cap_mode: $("ae_at_cap_mode").value,
     pc_bar: Number($("pc_bar").value),
-    objective_metric: $("objective_metric").value,
-    reactant_temperature_k: Number($("reactant_temperature_k").value),
+    selected_metric: $("selected_metric").value,
+    fuel_temperature_k: Number($("fuel_temperature_k").value),
+    oxidizer_temperature_k: Number($("oxidizer_temperature_k").value),
     desired_infill_percent: Number($("desired_infill_percent").value),
     ae_at: {
+      custom_enabled: $("ae_at_custom_enabled").checked,
       start: Number($("ae_at_start").value),
       stop: Number($("ae_at_stop").value),
       step: Number($("ae_at_step").value),
+      cf_search_upper_bound: state.defaults?.ae_at?.cf_search_upper_bound ?? 3.0,
     },
     of: {
       start: Number($("of_start").value),
       stop: Number($("of_stop").value),
       count: Number($("of_count").value),
-    },
-    hybrid_design: {
-      regression_model: $("hybrid_regression_model").value,
-      port_diameter_m: Number($("hybrid_port_diameter_mm").value) / 1000,
-      burn_time_s: Number($("hybrid_burn_time_s").value),
-      characteristic_length_m: Number($("hybrid_characteristic_length_m").value),
-      regression_a_mps: Number($("hybrid_regression_a_mps").value),
-      regression_n: Number($("hybrid_regression_n").value),
     },
   };
 }
@@ -447,22 +523,22 @@ function mountInteractiveChart(host, config, { expandable = true } = {}) {
     const activeIndex = getHighlightIndex();
 
     context.clearRect(0, 0, width, height);
-    context.fillStyle = "#09141c";
+    context.fillStyle = "#ffffff";
     context.fillRect(0, 0, width, height);
-    context.fillStyle = "#0d1821";
+    context.fillStyle = "#f7f9fb";
     context.fillRect(geometry.plotLeft, geometry.plotTop, geometry.plotWidth, geometry.plotHeight);
-    context.strokeStyle = "#223444";
+    context.strokeStyle = "#cad4dc";
     context.lineWidth = 1 * dpr;
     context.strokeRect(geometry.plotLeft, geometry.plotTop, geometry.plotWidth, geometry.plotHeight);
 
     const yTicks = buildTicks(viewY.min, viewY.max, 6);
     context.font = `${13 * dpr}px "Aptos", "Segoe UI Variable Text", sans-serif`;
-    context.fillStyle = "#97aab8";
+    context.fillStyle = "#556a79";
     context.textAlign = "right";
     yTicks.forEach((value) => {
       const ratio = (viewY.max - value) / (viewY.max - viewY.min);
       const y = geometry.plotTop + ratio * geometry.plotHeight;
-      context.strokeStyle = "#223444";
+      context.strokeStyle = "#e3e9ee";
       context.beginPath();
       context.moveTo(geometry.plotLeft, y);
       context.lineTo(geometry.plotLeft + geometry.plotWidth, y);
@@ -474,7 +550,7 @@ function mountInteractiveChart(host, config, { expandable = true } = {}) {
     context.textAlign = "center";
     xTicks.forEach((value) => {
       const x = geometry.plotLeft + ((value - viewX.min) / (viewX.max - viewX.min)) * geometry.plotWidth;
-      context.strokeStyle = "#15222c";
+      context.strokeStyle = "#eef2f5";
       context.beginPath();
       context.moveTo(x, geometry.plotTop);
       context.lineTo(x, geometry.plotTop + geometry.plotHeight);
@@ -520,7 +596,7 @@ function mountInteractiveChart(host, config, { expandable = true } = {}) {
 
     if (hoveredPoint) {
       const item = series[hoveredPoint.seriesIndex];
-      context.strokeStyle = "#f3fbff";
+      context.strokeStyle = "#ffffff";
       context.lineWidth = 2.4 * dpr;
       context.fillStyle = item.color;
       context.beginPath();
@@ -530,7 +606,7 @@ function mountInteractiveChart(host, config, { expandable = true } = {}) {
     }
     context.restore();
 
-    context.fillStyle = "#edf6ff";
+    context.fillStyle = "#16222b";
     context.textAlign = "center";
     context.font = `${14 * dpr}px "Aptos", "Segoe UI Variable Text", sans-serif`;
     context.fillText(config.xLabel, width / 2, height - 4 * dpr);
@@ -662,249 +738,236 @@ function renderChartInto(hostId, config) {
   mountInteractiveChart($(hostId), config, { expandable: true });
 }
 
-function renderSummaryCards(results) {
-  const meta = results.meta;
-  const controls = results.controls;
-  const cards = [
-    {
-      label: "Primary Objective",
-      value: meta.objective_metric_label,
-      hint: "Best-case value across the current O/F scan",
-    },
-    {
-      label: "Reactant Temperature",
-      value: `${fmt(controls.reactant_temperature_k, 2)} K`,
-      hint: "Applied to both fuel and oxidizer",
-    },
-    {
-      label: "Desired Infill",
-      value: `${fmt(controls.desired_infill_percent, 1)} %`,
-      hint: `ABS fraction ${fmt(controls.desired_infill_percent / 100, 3)}`,
-    },
-    {
-      label: "Sweep Density",
-      value: `${controls.ae_at_values.length} x ${controls.of_values.length}`,
-      hint: "Ae/At samples x O/F samples",
-    },
-  ];
-
-  $("summaryCards").innerHTML = cards.map((card) => `
-    <article class="summary-card">
-      <div class="label">${escapeHtml(card.label)}</div>
-      <div class="value">${escapeHtml(card.value)}</div>
-      <div class="hint">${escapeHtml(card.hint)}</div>
+function renderCompactCards(cards) {
+  return cards.map((card) => `
+    <article class="compact-output-card">
+      <div class="compact-output-label">${escapeHtml(card.label)}</div>
+      <div class="compact-output-value">${escapeHtml(card.value)}</div>
+      <div class="compact-output-hint">${escapeHtml(card.hint)}</div>
     </article>
   `).join("");
 }
 
-function renderOptimizerCards(results) {
-  $("optimizerCards").innerHTML = results.optimizations.map((item) => `
-    <article class="optimizer-card">
-      <h3>Optimized for ${escapeHtml(item.value_label)}</h3>
-      <div class="metric">${fmt(item.value, 2)} <span class="metric-unit">${escapeHtml(item.value_label)}</span></div>
-      <dl>
-        <div><dt>Objective</dt><dd>${escapeHtml(item.objective)}</dd></div>
-        <div><dt>Infill</dt><dd>${fmt(item.case.abs_vol_frac * 100, 1)}%</dd></div>
-        <div><dt>O/F</dt><dd>${fmt(item.case.of, 2)}</dd></div>
-        <div><dt>Ae/At</dt><dd>${fmt(item.case.ae_at, 2)}</dd></div>
-        <div><dt>Reactant T</dt><dd>${fmt(item.case.fuel_temp_k, 2)} K</dd></div>
-        <div><dt>mdot</dt><dd>${fmt(item.case.mdot_total_kg_s, 3)} kg/s</dd></div>
-        <div><dt>Chamber T</dt><dd>${fmt(item.case.tc_k, 0)} K</dd></div>
-      </dl>
-    </article>
-  `).join("");
+function fieldMap(fields) {
+  return Object.fromEntries(fields.map((field) => [field.key, field]));
 }
 
-function renderOptimizerTable(results) {
-  $("optimizerTableBody").innerHTML = results.optimizations.map((item) => `
-    <tr>
-      <td>${escapeHtml(item.objective)}</td>
-      <td>${fmt(item.value, 2)} ${escapeHtml(item.value_label)}</td>
-      <td>${fmt(item.case.abs_vol_frac * 100, 1)}%</td>
-      <td>${fmt(item.case.of, 2)}</td>
-      <td>${fmt(item.case.ae_at, 2)}</td>
-      <td>${fmt(item.case.fuel_temp_k, 2)} K</td>
-      <td>${fmt(item.case.isp_vac_s, 2)} s</td>
-      <td>${fmt(item.case.mdot_total_kg_s, 3)} kg/s</td>
-      <td>${fmt(item.case.dt_mm, 2)} mm</td>
-      <td>${fmt(item.case.de_mm, 2)} mm</td>
-    </tr>
-  `).join("");
+function fieldCard(field) {
+  return {
+    label: field.label,
+    value: formatCaseField(field.key, field.value),
+    hint: `Field: ${field.key}`,
+  };
 }
 
-function fmtMm(valueM, digits = 1) {
-  return `${fmt(valueM * 1000, digits)} mm`;
-}
-
-function fmtFlow(value) {
-  return `${fmt(value, 3)} kg/s`;
-}
-
-function fmtRate(value) {
-  return `${fmt(value * 1000, 3)} mm/s`;
-}
-
-function fmtPostLength(geometry) {
-  if (geometry.post_chamber_length_m <= 1e-9) {
-    return "0 mm";
-  }
-  return fmtMm(geometry.post_chamber_length_m, 1);
-}
-
-function renderHybridDiagram(item) {
-  const geometry = item.hybrid_design.geometry;
-  const equations = item.hybrid_design.equations;
-  const assumptions = item.hybrid_design.assumptions;
-  const totalLength = geometry.total_chamber_length_m + (geometry.chamber_inner_diameter_m * 1.2);
-  const scaleX = 430 / totalLength;
-  const chamberHeight = Math.max(56, Math.min(110, geometry.chamber_inner_diameter_m * 1800));
-  const portHeight = chamberHeight * (geometry.port_diameter_m / geometry.chamber_inner_diameter_m);
-  const yCenter = 110;
-  const chamberTop = yCenter - chamberHeight / 2;
-  const portTop = yCenter - portHeight / 2;
-  const x0 = 26;
-  const preW = geometry.pre_chamber_length_m * scaleX;
-  const grainW = geometry.grain_length_m * scaleX;
-  const postW = geometry.post_chamber_length_m * scaleX;
-  const nozzleBaseX = x0 + preW + grainW + postW;
-  const nozzleTipX = nozzleBaseX + geometry.chamber_inner_diameter_m * 0.72 * scaleX;
-  const throatHalf = Math.max(8, chamberHeight * 0.16);
-  const nozzleExitHalf = chamberHeight * 0.44;
-
+function renderBestIspSection(title, cards) {
   return `
-    <svg class="hybrid-diagram" viewBox="0 0 520 220" role="img" aria-label="${escapeHtml(item.objective)} hybrid layout">
-      <defs>
-        <linearGradient id="shell-${escapeHtml(item.key)}" x1="0" x2="1">
-          <stop offset="0%" stop-color="#153240"/>
-          <stop offset="100%" stop-color="#0e242f"/>
-        </linearGradient>
-        <linearGradient id="flame-${escapeHtml(item.key)}" x1="0" x2="1">
-          <stop offset="0%" stop-color="#37d7c5"/>
-          <stop offset="55%" stop-color="#69b7ff"/>
-          <stop offset="100%" stop-color="#ffb454"/>
-        </linearGradient>
-      </defs>
-      <rect x="${x0}" y="${chamberTop}" width="${preW + grainW + postW}" height="${chamberHeight}" rx="18" fill="url(#shell-${escapeHtml(item.key)})" stroke="#4a6577"/>
-      <rect x="${x0 + preW}" y="${chamberTop}" width="${grainW}" height="${chamberHeight}" fill="rgba(255,180,84,0.08)" stroke="#ffb454" stroke-dasharray="5 4"/>
-      <rect x="${x0}" y="${portTop}" width="${preW + grainW + postW}" height="${portHeight}" rx="${portHeight / 2}" fill="rgba(10,19,26,0.95)" stroke="url(#flame-${escapeHtml(item.key)})"/>
-      <path d="M ${nozzleBaseX} ${yCenter - throatHalf} L ${nozzleTipX} ${yCenter - nozzleExitHalf} L ${nozzleTipX} ${yCenter + nozzleExitHalf} L ${nozzleBaseX} ${yCenter + throatHalf} Z" fill="rgba(17,34,45,0.96)" stroke="#8abed8"/>
-      <circle cx="${x0 - 10}" cy="${yCenter}" r="10" fill="#31c9c9"/>
-      <path d="M ${x0 - 10} ${yCenter} L ${x0} ${yCenter}" stroke="#31c9c9" stroke-width="4" stroke-linecap="round"/>
-      <text x="${x0 - 18}" y="${yCenter - 18}" fill="#9ddfda" font-size="12" font-family="Aptos, Segoe UI, sans-serif">Injector</text>
-      <text x="${x0 + preW / 2}" y="${chamberTop - 10}" fill="#d9e8f3" font-size="12" text-anchor="middle" font-family="Aptos, Segoe UI, sans-serif">Pre ${fmtMm(geometry.pre_chamber_length_m, 0)}</text>
-      <text x="${x0 + preW + grainW / 2}" y="${chamberTop - 10}" fill="#ffd39b" font-size="12" text-anchor="middle" font-family="Aptos, Segoe UI, sans-serif">Grain ${fmtMm(geometry.grain_length_m, 0)}</text>
-      <text x="${x0 + preW + grainW + postW / 2}" y="${chamberTop - 10}" fill="#d9e8f3" font-size="12" text-anchor="middle" font-family="Aptos, Segoe UI, sans-serif">Post ${fmtMm(geometry.post_chamber_length_m, 0)}</text>
-      <text x="${x0 + preW + grainW / 2}" y="${yCenter + 6}" fill="#8edfe0" font-size="12" text-anchor="middle" font-family="Aptos, Segoe UI, sans-serif">Dp ${fmtMm(geometry.port_diameter_m, 0)}</text>
-      <text x="${x0 + preW + grainW / 2}" y="${chamberTop + chamberHeight + 18}" fill="#a6b8c5" font-size="12" text-anchor="middle" font-family="Aptos, Segoe UI, sans-serif">Dc ${fmtMm(geometry.chamber_inner_diameter_m, 0)}</text>
-      <text x="${nozzleTipX - 8}" y="${yCenter - nozzleExitHalf - 10}" fill="#9dd1ff" font-size="12" text-anchor="end" font-family="Aptos, Segoe UI, sans-serif">Nozzle</text>
-      <text x="26" y="194" fill="#a6b8c5" font-size="12" font-family="Aptos, Segoe UI, sans-serif">mdot ox ${fmtFlow(equations.mdot_ox_kg_s)}</text>
-      <text x="190" y="194" fill="#a6b8c5" font-size="12" font-family="Aptos, Segoe UI, sans-serif">rdot ${fmtRate(equations.regression_rate_mps)}</text>
-      <text x="330" y="194" fill="#a6b8c5" font-size="12" font-family="Aptos, Segoe UI, sans-serif">burn ${fmt(geometry.burn_time_s, 1)} s</text>
-      <text x="26" y="210" fill="#708695" font-size="11" font-family="Aptos, Segoe UI, sans-serif">${escapeHtml(assumptions.pre_chamber_method)}</text>
-    </svg>
+    <section class="best-isp-section">
+      <h4>${escapeHtml(title)}</h4>
+      <div class="best-isp-card-grid">
+        ${renderCompactCards(cards)}
+      </div>
+    </section>
   `;
 }
 
-function renderHybridSizing(results) {
-  $("hybridSizingGrid").innerHTML = results.optimizations.map((item) => {
-    const geometry = item.hybrid_design.geometry;
-    const equations = item.hybrid_design.equations;
-    const assumptions = item.hybrid_design.assumptions;
-    return `
-      <article class="hybrid-card">
-        <h3>Hybrid Layout for ${escapeHtml(item.value_label)}</h3>
-        <div class="hybrid-value">${fmt(item.value, 2)} <span class="metric-unit">${escapeHtml(item.value_label)}</span></div>
-        <div class="hybrid-meta">${escapeHtml(item.objective)} optimum. Single-port hybrid estimate for ${fmt(item.case.abs_vol_frac * 100, 1)}% infill and O/F ${fmt(item.case.of, 2)}.</div>
-        ${renderHybridDiagram(item)}
-        <div class="hybrid-stats">
-          <div><div class="hybrid-stat-label">Objective</div><div class="hybrid-stat-value">${escapeHtml(item.objective)}</div></div>
-          <div><div class="hybrid-stat-label">mdot ox</div><div class="hybrid-stat-value">${fmtFlow(equations.mdot_ox_kg_s)}</div></div>
-          <div><div class="hybrid-stat-label">mdot fuel</div><div class="hybrid-stat-value">${fmtFlow(equations.mdot_f_total_kg_s)}</div></div>
-          <div><div class="hybrid-stat-label">Total Fuel Mass</div><div class="hybrid-stat-value">${fmt(geometry.fuel_mass_total_kg, 2)} kg</div></div>
-          <div><div class="hybrid-stat-label">Gox</div><div class="hybrid-stat-value">${fmt(equations.gox_kg_m2_s, 1)} kg/m²/s</div></div>
-          <div><div class="hybrid-stat-label">Port Diameter</div><div class="hybrid-stat-value">${fmtMm(geometry.port_diameter_m)}</div></div>
-          <div><div class="hybrid-stat-label">Final Port / Dc</div><div class="hybrid-stat-value">${fmtMm(geometry.final_port_diameter_m)} / ${fmtMm(geometry.chamber_inner_diameter_m)}</div></div>
-          <div><div class="hybrid-stat-label">Grain Length</div><div class="hybrid-stat-value">${fmtMm(geometry.grain_length_m)}</div></div>
-          <div><div class="hybrid-stat-label">Volumetric Loading</div><div class="hybrid-stat-value">${fmt(geometry.volumetric_loading, 3)}</div></div>
-          <div><div class="hybrid-stat-label">Pre / Post</div><div class="hybrid-stat-value">${fmtMm(geometry.pre_chamber_length_m, 0)} / ${fmtPostLength(geometry)}</div></div>
-          <div><div class="hybrid-stat-label">L* min / target / achieved</div><div class="hybrid-stat-value">${fmt(geometry.characteristic_length_minimum_m, 2)} / ${fmt(geometry.characteristic_length_target_m, 2)} / ${fmt(geometry.characteristic_length_achieved_m, 2)} m</div></div>
-          <div><div class="hybrid-stat-label">Regression model</div><div class="hybrid-stat-value">${escapeHtml(assumptions.regression_model_label)}</div></div>
-          <div><div class="hybrid-stat-label">OF / F / c*</div><div class="hybrid-stat-value">${fmt(equations.of_check, 3)} / ${fmt(equations.thrust_from_cf_n, 0)} N / ${fmt(equations.cstar_from_flow_mps, 1)} m/s</div></div>
-        </div>
-      </article>
-    `;
-  }).join("");
+function formatCaseField(key, value) {
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  if (typeof value !== "number") {
+    return value ?? "-";
+  }
+  if (key.endsWith("_frac") || key === "cf" || key === "gamma_e") {
+    return fmt(value, 4);
+  }
+  if (key === "ae_at" || key === "of" || key.endsWith("_cm") || key.endsWith("_mm")) {
+    return fmt(value, 2);
+  }
+  if (key.endsWith("_k")) {
+    return fmt(value, 1);
+  }
+  if (key === "mach_t" || key === "mach_e") {
+    return fmt(value, 6);
+  }
+  if (key.endsWith("_m2")) {
+    return fmt(value, 7);
+  }
+  if (key.endsWith("_kg_s")) {
+    return fmt(value, 4);
+  }
+  return fmt(value, 3);
 }
 
-function renderHybridSizingTable(results) {
-  $("hybridSizingTableBody").innerHTML = results.optimizations.map((item) => {
-    const geometry = item.hybrid_design.geometry;
-    const equations = item.hybrid_design.equations;
-    return `
-      <tr>
-        <td>${escapeHtml(item.objective)}</td>
-        <td>${fmtFlow(equations.mdot_ox_kg_s)}</td>
-        <td>${fmtFlow(equations.mdot_f_total_kg_s)}</td>
-        <td>${fmt(geometry.fuel_mass_total_kg, 2)} kg</td>
-        <td>${fmt(equations.gox_kg_m2_s, 1)} kg/m²/s</td>
-        <td>${fmtRate(equations.regression_rate_mps)}</td>
-        <td>${fmtMm(geometry.port_diameter_m, 1)}</td>
-        <td>${fmtMm(geometry.chamber_inner_diameter_m, 1)}</td>
-        <td>${fmtMm(geometry.grain_length_m, 1)}</td>
-        <td>${fmtMm(geometry.pre_chamber_length_m, 1)}</td>
-        <td>${fmtPostLength(geometry)}</td>
-        <td>${fmt(geometry.burn_time_s, 1)} s</td>
-        <td>${fmt(equations.of_check, 3)}</td>
-        <td>${fmt(equations.thrust_from_cf_n, 1)} N</td>
-        <td>${fmt(equations.cstar_from_flow_mps, 1)} m/s</td>
-      </tr>
-    `;
-  }).join("");
+function renderBestIspOutput(results) {
+  const item = results.best_isp_case;
+  if (!item || !item.fields?.length) {
+    $("bestIspOutput").innerHTML = chartEmptyState("No Isp-optimized output is available.");
+    return;
+  }
+  const fields = fieldMap(item.fields);
+  const simulationCards = [
+    {
+      label: "Plot Metric",
+      value: results.meta.selected_metric_label,
+      hint: "Metric shown on the raw O/F chart",
+    },
+    {
+      label: "Sweep Density",
+      value: `${results.controls.ae_at_values.length} x ${results.controls.of_values.length}`,
+      hint: "Ae/At samples x O/F samples",
+    },
+    {
+      label: "Case Count",
+      value: results.meta.case_count.toLocaleString(),
+      hint: `${results.meta.failure_count.toLocaleString()} failed or unconverged cases`,
+    },
+  ];
+  const capCards = [
+    {
+      label: "Cap Mode",
+      value: results.controls.ae_at_cap_mode === "exit_diameter" ? "Exit Diameter" : "Area Ratio",
+      hint: results.controls.ae_at_cap_mode === "exit_diameter"
+        ? `${fmt(results.controls.max_exit_diameter_cm, 1)} cm maximum exit diameter`
+        : `${fmt(results.controls.max_area_ratio, 1)} maximum Ae/At`,
+    },
+  ];
+  const capInputKey = results.controls.ae_at_cap_mode === "exit_diameter"
+    ? "max_exit_diameter_cm"
+    : "max_area_ratio";
+  const inputKeys = [
+    "target_thrust_n",
+    "pc_bar",
+    "abs_vol_frac",
+    "fuel_temp_k",
+    "oxidizer_temp_k",
+    "of",
+    "ae_at",
+    capInputKey,
+    "ae_at_cap_mode",
+  ];
+  const ceaKeys = [
+    "isp_s",
+    "isp_vac_s",
+    "cf",
+    "cstar_mps",
+    "tc_k",
+    "mach_t",
+    "pe_bar",
+    "te_k",
+    "mach_e",
+    "gamma_e",
+    "mw_e",
+    "isp_mps",
+    "isp_vac_mps",
+  ];
+  const sizingKeys = [
+    "abs_mass_frac",
+    "mdot_total_kg_s",
+    "at_m2",
+    "ae_m2",
+    "dt_mm",
+    "de_mm",
+    "de_cm",
+    "exit_diameter_margin_cm",
+    "exit_diameter_within_limit",
+  ];
+  const cardsForKeys = (keys) => keys.filter((key) => fields[key]).map((key) => fieldCard(fields[key]));
+
+  $("bestIspOutput").innerHTML = `
+    <article class="best-isp-card">
+      <div class="best-isp-card-head">
+        <div>
+          <p class="eyebrow">Isp Optimized</p>
+          <h3>Highest ${escapeHtml(item.metric_label)}</h3>
+        </div>
+        <div class="best-isp-metric">${fmt(item.case.isp_s, 2)} <span>s</span></div>
+      </div>
+      <p class="best-isp-note">${escapeHtml(item.message)}</p>
+      ${renderBestIspSection("Simulation Parameters", [...simulationCards, ...capCards])}
+      ${renderBestIspSection("Inputs", cardsForKeys(inputKeys))}
+      ${renderBestIspSection("CEA Outputs", cardsForKeys(ceaKeys))}
+      ${renderBestIspSection("Derived Sizing Outputs", cardsForKeys(sizingKeys))}
+    </article>
+  `;
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function rowsToCsv(headers, rows) {
+  return [
+    headers.map((header) => csvEscape(header)).join(","),
+    ...rows.map((row) => row.map((value) => csvEscape(value)).join(",")),
+  ].join("\r\n");
+}
+
+function makeDownloadUrl(csvText) {
+  const url = URL.createObjectURL(new Blob([csvText], { type: "text/csv;charset=utf-8" }));
+  state.downloadUrls.push(url);
+  return url;
+}
+
+function clearDownloadUrls() {
+  state.downloadUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.downloadUrls = [];
+}
+
+function renderCsvDownloads(results) {
+  clearDownloadUrls();
+  const fields = results.best_isp_case.fields.map((field) => ({ key: field.key, label: field.label }));
+  const allCasesCsv = rowsToCsv(
+    fields.map((field) => field.label),
+    results.cases.map((item) => fields.map((field) => item[field.key])),
+  );
+  const bestIspCsv = rowsToCsv(
+    ["key", "label", "value"],
+    results.best_isp_case.fields.map((field) => [field.key, field.label, field.value]),
+  );
+  const allCasesUrl = makeDownloadUrl(allCasesCsv);
+  const bestIspUrl = makeDownloadUrl(bestIspCsv);
+
+  $("csvDownloads").innerHTML = `
+    <div class="download-grid">
+      <a class="download-card" href="${allCasesUrl}" download="cea_all_converged_cases.csv">
+        <span class="download-title">All Converged Cases CSV</span>
+        <span class="download-meta">${results.cases.length.toLocaleString()} rows, ${fields.length} columns</span>
+      </a>
+      <a class="download-card" href="${bestIspUrl}" download="cea_highest_isp_case.csv">
+        <span class="download-title">Highest Isp Case CSV</span>
+        <span class="download-meta">Optimized for Isp, ${fields.length} parameters</span>
+      </a>
+    </div>
+  `;
 }
 
 function setHero(results) {
   $("caseCount").textContent = results.meta.case_count.toLocaleString();
   $("failureCount").textContent = results.meta.failure_count.toLocaleString();
   $("runtimeValue").textContent = `${fmt(results.meta.runtime_seconds, 1)} s`;
-  $("heroTitle").textContent = `Objective: ${results.meta.objective_metric_label}`;
-  $("heroSubtext").textContent = `Evaluated ${results.meta.total_combinations.toLocaleString()} combinations at ${fmt(results.controls.reactant_temperature_k, 2)} K and ${fmt(results.controls.desired_infill_percent, 1)}% infill using ${results.meta.backend} with ${results.meta.cpu_workers} worker(s). The plots below are rendered in-browser from raw sweep data.`;
-  $("overviewMetricTitle").textContent = `Raw ${results.meta.objective_metric_label} vs O/F`;
+  $("heroTitle").textContent = "Sweep overview";
+  const capText = results.controls.ae_at_cap_mode === "exit_diameter"
+    ? `Cases exceeding ${fmt(results.controls.max_exit_diameter_cm, 1)} cm exit diameter are filtered out.`
+    : `The sweep is capped at Ae/At ${fmt(results.controls.max_area_ratio, 2)}.`;
+  $("heroSubtext").textContent = `Evaluated ${results.meta.total_combinations.toLocaleString()} candidate combinations at fuel ${fmt(results.controls.fuel_temperature_k, 2)} K, oxidizer ${fmt(results.controls.oxidizer_temperature_k, 2)} K, and ${fmt(results.controls.desired_infill_percent, 1)}% infill using ${results.meta.backend} with ${results.meta.cpu_workers} worker(s). ${capText}`;
+  $("overviewMetricTitle").textContent = `Raw ${results.meta.selected_metric_label} vs O/F`;
 }
 
 function renderOverview(results) {
-  const rawSeries = results.charts.raw_objective_by_ae_at.map((series) => ({
+  const rawSeries = results.charts.raw_metric_by_ae_at.map((series) => ({
     label: series.label,
     points: series.points.map((point) => ({ x: point.x, y: point.y })),
   }));
   renderChartInto("overviewMetricChart", createLineChartConfig(rawSeries, {
-    title: `Raw ${results.meta.objective_metric_label} vs O/F`,
+    title: `Raw ${results.meta.selected_metric_label} vs O/F`,
     xLabel: "O/F [-]",
-    yLabel: results.meta.objective_metric_label,
+    yLabel: results.meta.selected_metric_label,
     height: 740,
-    xDigits: 2,
-    yDigits: 2,
-  }));
-
-  renderChartInto("overviewObjectiveAeAtChart", createLineChartConfig([{
-    label: results.charts.best_objective_by_ae_at.label,
-    points: results.charts.best_objective_by_ae_at.points.map((point) => ({ x: point.x, y: point.y })),
-  }], {
-    title: `Best ${results.meta.objective_metric_label} vs Ae/At`,
-    xLabel: "Ae/At [-]",
-    yLabel: results.meta.objective_metric_label,
-    height: 940,
-    xDigits: 2,
-    yDigits: 2,
-  }));
-
-  renderChartInto("overviewBestOfChart", createLineChartConfig([{
-    label: results.charts.best_of_by_ae_at.label,
-    points: results.charts.best_of_by_ae_at.points.map((point) => ({ x: point.x, y: point.y })),
-  }], {
-    title: "Best O/F vs Ae/At",
-    xLabel: "Ae/At [-]",
-    yLabel: "Best O/F [-]",
-    height: 700,
     xDigits: 2,
     yDigits: 2,
   }));
@@ -913,12 +976,10 @@ function renderOverview(results) {
 function renderResults(results) {
   state.results = results;
   setHero(results);
-  renderSummaryCards(results);
-  renderOptimizerCards(results);
-  renderOptimizerTable(results);
-  renderHybridSizing(results);
-  renderHybridSizingTable(results);
+  renderBestIspOutput(results);
+  renderCsvDownloads(results);
   renderOverview(results);
+  renderCalculationArticle(results);
 }
 
 async function requestJson(url, options = {}) {
@@ -1026,7 +1087,11 @@ async function onSweepSubmit(event) {
 }
 
 async function bootstrap() {
+  initializeTheme();
   $("sweepForm").addEventListener("submit", onSweepSubmit);
+  $("themeToggle").addEventListener("click", toggleTheme);
+  $("ae_at_custom_enabled").addEventListener("change", updateAdvancedControls);
+  $("ae_at_cap_mode").addEventListener("change", updateAdvancedControls);
   $("chartModalClose").addEventListener("click", closeModal);
   document.addEventListener("click", (event) => {
     if (event.target.matches("[data-close-modal='true']")) {
@@ -1039,6 +1104,7 @@ async function bootstrap() {
     }
   });
   await loadDefaults();
+  renderCalculationArticle();
   await loadStatus();
 }
 

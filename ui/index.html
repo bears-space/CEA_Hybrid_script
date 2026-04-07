@@ -3,264 +3,276 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hybrid CEA Design Console</title>
+  <title>BEARS Hybrid Rocket Analysis</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
-  <div class="bg-orbit orbit-a"></div>
-  <div class="bg-orbit orbit-b"></div>
-  <div class="app-shell">
-    <aside class="control-pane">
-      <div class="brand-card reveal">
-        <p class="eyebrow">Hybrid Rocket Trade Space</p>
-        <h1>CEA Design Console</h1>
-        <p class="lede">Run geometry and mixture sweeps around a fixed reactant temperature and infill target, then inspect the results directly in the browser.</p>
+<body data-theme="dark">
+  <div class="app-frame">
+    <header class="topbar reveal">
+      <div class="brand-lockup">
+        <img class="brand-logo" src="/assets/bears-logo.png" alt="BEARS logo">
+        <div class="brand-copy">
+          <p class="eyebrow">BEARS Propulsion</p>
+          <h1>Hybrid Rocket Analysis</h1>
+          <p class="lede">
+            Evaluate NASA CEA nozzle and mixture sweeps for an N2O and paraffin engine with ABS structure, then inspect interactive plots and raw CEA result points.
+          </p>
+        </div>
       </div>
-
-      <form id="sweepForm" class="panel form-panel reveal">
-        <div class="panel-heading">
-          <h2>Inputs</h2>
-          <p>Set chamber conditions, select one reactant temperature, choose the desired infill, and sweep the operating envelope.</p>
+      <div class="topbar-meta">
+        <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="true" aria-label="Switch color theme">
+          <span class="theme-toggle-label">Dark mode</span>
+          <span id="themeToggleValue" class="theme-toggle-value">On</span>
+        </button>
+        <div class="meta-item">
+          <span class="meta-label">Solver</span>
+          <span class="meta-value">NASA CEA</span>
         </div>
-
-        <div class="field-grid two-up">
-          <label class="field">
-            <span>Target Thrust [N]</span>
-            <input id="target_thrust_n" type="number" step="100" min="100">
-          </label>
-          <label class="field">
-            <span>Chamber Pressure [bar]</span>
-            <input id="pc_bar" type="number" step="1" min="1">
-          </label>
+        <div class="meta-item">
+          <span class="meta-label">Engine</span>
+          <span class="meta-value">N2O / Paraffin + ABS</span>
         </div>
-
-        <div class="subsection">
-          <div class="subsection-title">Ae/At Sweep</div>
-          <div class="field-grid three-up">
-            <label class="field">
-              <span>Start</span>
-              <input id="ae_at_start" type="number" step="1" min="1">
-            </label>
-            <label class="field">
-              <span>Stop</span>
-              <input id="ae_at_stop" type="number" step="1" min="1">
-            </label>
-            <label class="field">
-              <span>Step</span>
-              <input id="ae_at_step" type="number" step="1" min="1">
-            </label>
-          </div>
+        <div class="meta-item">
+          <span class="meta-label">Units</span>
+          <span class="meta-value">SI Internal</span>
         </div>
+      </div>
+    </header>
 
-        <div class="subsection">
-          <div class="subsection-title">O/F Sweep</div>
-          <div class="field-grid three-up">
-            <label class="field">
-              <span>Start</span>
-              <input id="of_start" type="number" step="0.1" min="0.1">
-            </label>
-            <label class="field">
-              <span>Stop</span>
-              <input id="of_stop" type="number" step="0.1" min="0.1">
-            </label>
-            <label class="field">
-              <span>Count</span>
-              <input id="of_count" type="number" step="1" min="3">
-            </label>
-          </div>
-        </div>
+    <div class="workspace">
+      <aside class="sidebar reveal">
+        <section class="panel intro-panel">
+          <h2>Analysis Setup</h2>
+          <p>
+            Set the CEA chamber condition and sweep ranges for the N2O and paraffin engine with ABS structure.
+          </p>
+        </section>
 
-        <div class="subsection">
-          <div class="subsection-title">Reactant Temperature</div>
-          <div class="field-grid two-up">
-            <label class="field">
-              <span>Temperature [K]</span>
-              <select id="reactant_temperature_k"></select>
-            </label>
-            <label class="field">
-              <span>Desired Infill [%]</span>
-              <input id="desired_infill_percent" type="number" step="1" min="0" max="100" value="10">
-            </label>
-          </div>
-        </div>
-
-        <div class="field-grid one-up">
-          <label class="field">
-            <span>Primary Objective</span>
-            <select id="objective_metric"></select>
-          </label>
-        </div>
-
-        <div class="subsection">
-          <div class="subsection-title">Hybrid Sizing Assumptions</div>
-          <div class="field-grid two-up">
-            <label class="field">
-              <span>Port Diameter Dp [mm]</span>
-              <input id="hybrid_port_diameter_mm" type="number" step="1" min="1">
-            </label>
-            <label class="field">
-              <span>Burn Time [s]</span>
-              <input id="hybrid_burn_time_s" type="number" step="0.1" min="0.1">
-            </label>
-            <label class="field">
-              <span>Characteristic Length L* [m]</span>
-              <input id="hybrid_characteristic_length_m" type="number" step="0.05" min="0.05">
-            </label>
-            <label class="field">
-              <span>Regression Model</span>
-              <select id="hybrid_regression_model"></select>
-            </label>
-            <label class="field">
-              <span>Manual Regression a [m/s]</span>
-              <input id="hybrid_regression_a_mps" type="number" step="0.000001" min="0.000001">
-            </label>
-            <label class="field">
-              <span>Manual Regression n [-]</span>
-              <input id="hybrid_regression_n" type="number" step="0.0001" min="0.01">
-            </label>
-          </div>
-          <p id="hybridSizingExplain" class="field-note"><code>D_p</code> is the initial circular fuel-port diameter. Pre-chamber length uses an empirical axial showerhead estimate, and post-chamber length is solved from the target characteristic length.</p>
-        </div>
-
-        <button id="runButton" type="submit" class="run-button">Run Sweep</button>
-        <div id="sweepStatus" class="sweep-status hidden" aria-live="polite">
-          <div class="sweep-status-head">
-            <div id="sweepSpinner" class="sweep-spinner hidden"></div>
-            <div class="sweep-status-copy">
-              <div id="sweepStatusTitle" class="sweep-status-title">Ready to run</div>
-              <div id="sweepStatusText" class="sweep-status-text">No sweep is active.</div>
+        <form id="sweepForm" class="panel form-panel">
+          <section class="form-section">
+            <div class="section-header">
+              <h3>Chamber Condition</h3>
+              <p>Target chamber pressure goes into CEA; thrust and exit diameter are used only for post-CEA nozzle sizing.</p>
             </div>
-            <div id="sweepStatusPercent" class="sweep-status-percent">0%</div>
-          </div>
-          <div class="progress-track">
-            <div id="sweepProgressBar" class="progress-bar"></div>
-          </div>
-        </div>
-      </form>
-    </aside>
+            <div class="field-grid">
+              <label class="field">
+                <span class="field-label">Target Thrust [N]</span>
+                <input id="target_thrust_n" type="number" step="1" min="1">
+              </label>
+              <label class="field">
+                <span class="field-label">Max Exit Diameter [cm]</span>
+                <input id="max_exit_diameter_cm" type="number" step="0.1" min="0.1">
+              </label>
+              <label class="field">
+                <span class="field-label">Target Chamber Pressure [bar]</span>
+                <input id="pc_bar" type="number" step="1" min="1">
+              </label>
+              <label class="field">
+                <span class="field-label">
+                  Desired Infill [%]
+                  <button
+                    class="info-dot"
+                    type="button"
+                    data-tip="This maps directly to the ABS volume-fraction input. A value of 10% means the backend evaluates one ABS volume fraction of 0.10."
+                    aria-label="Explain desired infill"
+                  >i</button>
+                </span>
+                <input id="desired_infill_percent" type="number" step="1" min="0" max="100" value="10">
+              </label>
+            </div>
+          </section>
 
-    <main class="results-pane">
-      <section class="hero panel reveal">
-        <div>
-          <p class="eyebrow">Live Results</p>
-          <h2 id="heroTitle">Design trade study workspace</h2>
-          <p id="heroSubtext" class="hero-copy">Load the default sweep or adjust the ranges on the left to explore a new envelope.</p>
-        </div>
-        <div class="status-pills">
-          <div class="pill">
-            <span class="pill-label">Cases</span>
-            <span id="caseCount" class="pill-value">-</span>
-          </div>
-          <div class="pill">
-            <span class="pill-label">Failures</span>
-            <span id="failureCount" class="pill-value">-</span>
-          </div>
-          <div class="pill">
-            <span class="pill-label">Runtime</span>
-            <span id="runtimeValue" class="pill-value">-</span>
-          </div>
-        </div>
-      </section>
+          <section class="form-section">
+            <div class="section-header">
+              <h3>Ae/At Sweep</h3>
+              <p>Defaults to start 1, step 1, and an upper limit determined by the selected simulation cap.</p>
+            </div>
+          </section>
 
-      <section id="summaryCards" class="summary-grid reveal"></section>
+          <details class="advanced-panel">
+            <summary>Advanced options</summary>
+            <section class="form-section advanced-section">
+              <div class="section-header">
+                <h3>Simulation Cap</h3>
+                <p>Limit the sweep by calculated exit diameter or by an explicit maximum area ratio.</p>
+              </div>
+              <div class="field-grid two-up">
+                <label class="field">
+                  <span class="field-label">Cap Mode</span>
+                  <select id="ae_at_cap_mode">
+                    <option value="exit_diameter">Max exit diameter</option>
+                    <option value="area_ratio">Max area ratio</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Max Ae/At [-]</span>
+                  <input id="max_area_ratio" type="number" step="any" min="1.0001">
+                </label>
+              </div>
+            </section>
 
-      <section class="panel reveal">
-        <div class="panel-heading">
-          <h2>Optimized Designs</h2>
-          <p>Best cases for the selected fixed infill percentage and reactant temperature.</p>
-        </div>
-        <div id="optimizerCards" class="optimizer-grid"></div>
-      </section>
+            <section class="form-section advanced-section">
+              <label class="checkbox-field">
+                <input id="ae_at_custom_enabled" type="checkbox">
+                <span>Enable custom Ae/At sweep</span>
+              </label>
+              <fieldset id="aeAtCustomFields" class="advanced-fieldset" disabled>
+                <div class="field-grid three-up">
+                  <label class="field">
+                    <span class="field-label">Start</span>
+                    <input id="ae_at_start" type="number" step="any" min="1">
+                  </label>
+                  <label class="field">
+                    <span class="field-label">End</span>
+                    <input id="ae_at_stop" type="number" step="any" min="1">
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Step</span>
+                    <input id="ae_at_step" type="number" step="any" min="0.0001">
+                  </label>
+                </div>
+              </fieldset>
+            </section>
 
-      <section class="panel reveal">
-        <div class="panel-heading">
-          <h2>Hybrid Layout Sizing</h2>
-          <p>Exact SI-unit flow splits and single-port hybrid sizing applied to each optimized case, with explicit geometry assumptions for chamber segmentation.</p>
-        </div>
-        <div id="hybridSizingGrid" class="hybrid-sizing-grid"></div>
-      </section>
+            <section class="form-section advanced-section">
+              <div class="section-header">
+                <h3>O/F Sweep</h3>
+                <p>Oxidizer-to-fuel mass-ratio range scanned at each area ratio.</p>
+              </div>
+              <div class="field-grid three-up">
+                <label class="field">
+                  <span class="field-label">Start</span>
+                  <input id="of_start" type="number" step="0.1" min="0.1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Stop</span>
+                  <input id="of_stop" type="number" step="0.1" min="0.1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Count</span>
+                  <input id="of_count" type="number" step="1" min="3">
+                </label>
+              </div>
+            </section>
 
-      <section class="charts-grid reveal">
-        <article class="panel chart-panel">
-          <div class="panel-heading">
-            <h2 id="overviewMetricTitle">Raw objective vs O/F</h2>
-            <p>Each line is an area ratio. Toggle and highlight curves directly in the legend.</p>
+            <section class="form-section advanced-section">
+              <div class="section-header">
+                <h3>Reactant Temperatures</h3>
+                <p>Fuel and oxidizer temperatures passed separately to CEA.</p>
+              </div>
+              <div class="field-grid two-up">
+                <label class="field">
+                  <span class="field-label">Fuel Temperature [K]</span>
+                  <input id="fuel_temperature_k" type="number" step="0.01" min="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Oxidizer Temperature [K]</span>
+                  <input id="oxidizer_temperature_k" type="number" step="0.01" min="1">
+                </label>
+              </div>
+            </section>
+          </details>
+
+          <section class="form-section">
+            <div class="section-header">
+              <h3>Display</h3>
+              <p>Metric shown in the browser plot and CSV summaries.</p>
+            </div>
+            <label class="field">
+              <span class="field-label">Plot Metric</span>
+              <select id="selected_metric"></select>
+            </label>
+          </section>
+
+          <button id="runButton" type="submit" class="run-button">Run Sweep</button>
+
+          <div id="sweepStatus" class="sweep-status hidden" aria-live="polite">
+            <div class="sweep-status-head">
+              <div id="sweepSpinner" class="sweep-spinner hidden"></div>
+              <div class="sweep-status-copy">
+                <div id="sweepStatusTitle" class="sweep-status-title">Ready to run</div>
+                <div id="sweepStatusText" class="sweep-status-text">No sweep is active.</div>
+              </div>
+              <div id="sweepStatusPercent" class="sweep-status-percent">0%</div>
+            </div>
+            <div class="progress-track">
+              <div id="sweepProgressBar" class="progress-bar"></div>
+            </div>
           </div>
-          <div id="overviewMetricChart" class="chart-host clickable-chart" data-chart-title="Raw objective vs O/F"></div>
-        </article>
-        <article class="panel chart-panel chart-panel-feature">
-          <div class="panel-heading">
-            <h2>Best objective vs Ae/At</h2>
-            <p>The best value at each area ratio after scanning the full O/F sweep.</p>
-          </div>
-          <div id="overviewObjectiveAeAtChart" class="chart-host chart-host-feature clickable-chart" data-chart-title="Best objective vs Ae/At"></div>
-        </article>
-        <article class="panel chart-panel">
-          <div class="panel-heading">
-            <h2>Best O/F vs Ae/At</h2>
-            <p>The O/F that maximizes the chosen objective at each area ratio.</p>
-          </div>
-          <div id="overviewBestOfChart" class="chart-host clickable-chart" data-chart-title="Best O/F vs Ae/At"></div>
-        </article>
-      </section>
+        </form>
+      </aside>
 
-      <section class="panel reveal">
-        <div class="panel-heading">
-          <h2>Optimization Table</h2>
-          <p>Same optimized cases, exposed as a compact engineering table.</p>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Objective</th>
-                <th>Value</th>
-                <th>Infill</th>
-                <th>O/F</th>
-                <th>Ae/At</th>
-                <th>Reactant T</th>
-                <th>Isp Vac</th>
-                <th>mdot</th>
-                <th>dt</th>
-                <th>de</th>
-              </tr>
-            </thead>
-            <tbody id="optimizerTableBody"></tbody>
-          </table>
-        </div>
-      </section>
+      <main class="main-content">
+        <section class="panel summary-panel reveal">
+          <div class="summary-copy">
+            <p class="eyebrow">Overview</p>
+            <h2 id="heroTitle">Sweep overview</h2>
+            <p id="heroSubtext" class="hero-copy">
+              Load the defaults or change the ranges on the left, then run a sweep to populate the plots and CSV downloads.
+            </p>
+          </div>
+          <div class="summary-stats">
+            <div class="stat-chip">
+              <span class="stat-label">Cases</span>
+              <span id="caseCount" class="stat-value">-</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-label">Failures</span>
+              <span id="failureCount" class="stat-value">-</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-label">Runtime</span>
+              <span id="runtimeValue" class="stat-value">-</span>
+            </div>
+          </div>
+        </section>
+        <section class="panel reveal">
+          <div class="panel-header">
+            <h2>Highest Isp Output</h2>
+            <p>Complete output parameters for the converged case with the highest Isp.</p>
+          </div>
+          <div id="bestIspOutput" class="best-isp-output">
+            <div class="empty-state">Run a sweep to populate the Isp-optimized output box.</div>
+          </div>
+        </section>
 
-      <section class="panel reveal">
-        <div class="panel-heading">
-          <h2>Hybrid Sizing Table</h2>
-          <p>Per-objective hybrid engine dimensions and flow checks based on the selected sizing assumptions.</p>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Objective</th>
-                <th>mdot ox</th>
-                <th>mdot fuel</th>
-                <th>Fuel Mass</th>
-                <th>Gox</th>
-                <th>rdot</th>
-                <th>Dp</th>
-                <th>Dc</th>
-                <th>Grain L</th>
-                <th>Pre L</th>
-                <th>Post L</th>
-                <th>Burn t</th>
-                <th>OF check</th>
-                <th>F check</th>
-                <th>c* check</th>
-              </tr>
-            </thead>
-            <tbody id="hybridSizingTableBody"></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+        <section class="panel reveal">
+          <div class="panel-header">
+            <h2>Plots</h2>
+            <p>Interactive charts built directly in the browser from the raw CEA sweep results.</p>
+          </div>
+          <div class="chart-stack">
+            <article class="chart-section">
+              <div class="chart-header">
+                <h3 id="overviewMetricTitle">Raw metric vs O/F</h3>
+                <p>Each trace is one area ratio.</p>
+              </div>
+              <div id="overviewMetricChart" class="chart-host chart-host-wide clickable-chart" data-chart-title="Raw metric vs O/F">
+                <div class="empty-state">Run a sweep to populate the chart.</div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-header">
+            <h2>CSV Downloads</h2>
+            <p>Download exact CEA and derived sizing values instead of rendering a large integrated table in the UI.</p>
+          </div>
+          <div id="csvDownloads" class="csv-downloads">
+            <div class="empty-state">Run a sweep to generate downloadable CSV files.</div>
+          </div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-header">
+            <h2>Method and References</h2>
+            <p>Engineering note covering the calculation chain, assumptions, and references used by the tool.</p>
+          </div>
+          <article id="calculationArticle" class="calc-article"></article>
+        </section>
+      </main>
+    </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>
@@ -274,6 +286,7 @@
       <div id="chartModalBody" class="chart-modal-body"></div>
     </div>
   </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

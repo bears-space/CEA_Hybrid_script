@@ -1,9 +1,12 @@
 {
   "target_thrust_n": 3000.0,
+  "max_exit_diameter_cm": 10.0,
+  "max_area_ratio": 24.0,
+  "ae_at_cap_mode": "exit_diameter",
   "pc_bar": 30.0,
   "iac": true,
   "cpu_workers": "auto",
-  "summary_metric": "isp_vac_mps",
+  "summary_metric": "isp_vac_s",
   "output_dir": "outputs",
   "plots": {
     "enabled": true,
@@ -12,9 +15,11 @@
   },
   "sweeps": {
     "ae_at": {
-      "start": 3.0,
+      "custom_enabled": false,
+      "start": 1.0,
       "stop": 24.0,
-      "step": 3.0
+      "step": 1.0,
+      "cf_search_upper_bound": 3.0
     },
     "of": {
       "start": 1.5,
