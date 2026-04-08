@@ -1,6 +1,6 @@
 {
-  "target_thrust_n": 3000.0,
-  "max_exit_diameter_cm": 10.0,
+  "target_thrust_n": 4000.0,
+  "max_exit_diameter_cm": 12.0,
   "max_area_ratio": 24.0,
   "ae_at_cap_mode": "exit_diameter",
   "pc_bar": 30.0,
@@ -13,18 +13,70 @@
     "metric": "isp_vac_s",
     "output_dir": "plots"
   },
+  "blowdown": {
+    "auto_run_after_cea": true,
+    "ui_mode": "basic",
+    "seed_case": "highest_isp",
+    "tank": {
+      "volume_m3": 0.028,
+      "initial_mass_kg": 18.0,
+      "initial_temp_k": 293.15,
+      "usable_oxidizer_fraction": 0.95,
+      "initial_fill_fraction": 0.8,
+      "override_mass_volume": false
+    },
+    "feed": {
+      "line_id_m": 0.012,
+      "line_length_m": 1.2,
+      "friction_factor": 0.02,
+      "minor_loss_k_total": 8.0
+    },
+    "injector": {
+      "cd": 0.8,
+      "hole_count": 24,
+      "total_area_m2": 7.5e-05,
+      "override_total_area": false,
+      "delta_p_mode": "fraction_of_pc",
+      "delta_p_pa": 600000.0,
+      "delta_p_fraction_of_pc": 0.2
+    },
+    "grain": {
+      "abs_density_kg_m3": 1050.0,
+      "paraffin_density_kg_m3": 930.0,
+      "a_reg_si": 5.0e-05,
+      "n_reg": 0.5,
+      "port_count": 1,
+      "target_initial_gox_kg_m2_s": 250.0,
+      "initial_port_radius_m": 0.022,
+      "grain_length_m": 0.45,
+      "fuel_usable_fraction": 0.98,
+      "outer_radius_m": 0.045,
+      "override_initial_port_radius": false,
+      "override_grain_length": false,
+      "override_outer_radius": false
+    },
+    "simulation": {
+      "dt_s": 0.02,
+      "burn_time_s": 8.0,
+      "ambient_pressure_pa": 101325.0,
+      "max_inner_iterations": 80,
+      "relaxation": 0.35,
+      "relative_tolerance": 1.0e-06,
+      "stop_when_tank_quality_exceeds": 0.95
+    }
+  },
   "sweeps": {
     "ae_at": {
-      "custom_enabled": false,
+      "custom_enabled": true,
       "start": 1.0,
       "stop": 24.0,
-      "step": 1.0,
+      "step": 0.1,
       "cf_search_upper_bound": 3.0
     },
     "of": {
-      "start": 1.5,
-      "stop": 13.5,
-      "count": 97
+      "start": 1.0,
+      "stop": 14.0,
+      "count": 100
     },
     "abs_volume_fractions": [
       0.0,

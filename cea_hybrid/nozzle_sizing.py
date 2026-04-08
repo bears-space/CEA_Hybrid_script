@@ -4,6 +4,7 @@ import math
 
 
 G0_MPS2 = 9.80665
+STANDARD_SEA_LEVEL_PRESSURE_BAR = 1.01325
 DEFAULT_CF_SEARCH_UPPER_BOUND = 3.0
 MIN_SUPERSONIC_AE_AT = 1.000001
 CAP_MODE_EXIT_DIAMETER = "exit_diameter"
@@ -100,6 +101,7 @@ def add_nozzle_sizing(case, config):
     mdot_total = target_thrust_n / case["isp_mps"]
     at_m2 = mdot_total * case["cstar_mps"] / pc_pa
     ae_m2 = case["ae_at"] * at_m2
+    thrust_sl_n = target_thrust_n + (case["pe_bar"] - STANDARD_SEA_LEVEL_PRESSURE_BAR) * 1e5 * ae_m2
     dt_m = diameter_m_from_circle_area(at_m2)
     de_m = diameter_m_from_circle_area(ae_m2)
     max_exit_diameter_cm = config.get("max_exit_diameter_cm")
@@ -115,6 +117,7 @@ def add_nozzle_sizing(case, config):
         "mdot_total_kg_s": mdot_total,
         "at_m2": at_m2,
         "ae_m2": ae_m2,
+        "thrust_sl_n": thrust_sl_n,
         "dt_mm": dt_m * 1e3,
         "de_mm": de_m * 1e3,
         "de_cm": de_cm,

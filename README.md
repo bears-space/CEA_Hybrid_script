@@ -1,14 +1,15 @@
 # CEA Hybrid Script
 
-This project runs NASA CEA-based performance calculations for an N2O and paraffin hybrid rocket engine with ABS structure represented by a styrene/butadiene surrogate blend. The project includes both a sweep script and a local browser UI for running parameter studies and inspecting raw CEA result points.
+This project runs NASA CEA-based performance calculations for an N2O and paraffin hybrid rocket engine with ABS structure represented by a styrene/butadiene surrogate blend. The project includes both a sweep script and a local browser UI for running parameter studies, inspecting raw CEA result points, and running a transient blowdown model seeded from the best CEA case.
 
 ## What It Does
 
 - Evaluates N2O/paraffin/ABS-structure hybrid rocket performance with the `cea` Python package
 - Sweeps across user-defined `O/F` and `Ae/At` values, with configurable fuel temperature, oxidizer temperature, and infill target
+- Runs a transient nitrous blowdown model seeded from the highest-Isp converged CEA case
 - Writes full raw-case CSV data and failed/unconverged cases
 - Generates organized SVG temperature-pair dashboards automatically
-- Reports NASA CEA outputs plus a minimal post-CEA nozzle sizing layer for target thrust, mass flow, choked throat area, exit area, and circular-equivalent throat/exit diameters
+- Reports NASA CEA outputs plus a minimal post-CEA nozzle sizing layer for target thrust, estimated sea-level thrust, mass flow, choked throat area, exit area, and circular-equivalent throat/exit diameters
 
 ## Project Files
 
@@ -22,8 +23,10 @@ This project runs NASA CEA-based performance calculations for an N2O and paraffi
 - `cea_hybrid/outputs.py`: CSV and SVG export helpers
 - `cea_hybrid/ui_backend.py`: UI payload shaping and request parsing
 - `cea_hybrid/server.py`: HTTP server and background sweep job state
+- `blowdown_hybrid/`: integrated transient blowdown model split into config, thermo, hydraulics, grain, solver, calculations, and UI response helpers
 - `ui/`: HTML, CSS, and JavaScript for the interactive interface
 - `inputs.json`: sweep definitions, output path, and model settings
+- `blowdown_model.py`: compatibility shim pointing to the integrated UI-backed blowdown workflow
 - `test.py`: small direct CEA sanity check
 - `outputs/`: generated CSV files after a run
 - `outputs/plots/temperature_pairs/`: one dashboard per fuel/oxidizer temperature pair
@@ -33,6 +36,7 @@ This project runs NASA CEA-based performance calculations for an N2O and paraffi
 - Python 3
 - Installed `cea` package
 - `numpy`
+- `CoolProp`
 
 If you use the included virtual environment, activate it before running the script.
 
@@ -50,8 +54,11 @@ The UI includes:
 
 - main input controls for target thrust, maximum nozzle exit diameter, target chamber pressure, and desired infill percentage
 - advanced controls for `O/F`, fuel temperature, oxidizer temperature, `Ae/At` cap mode, and optional custom `Ae/At` start/end/step sweep
-- interactive in-browser plots generated from raw sweep data
-- zoom, pan, legend toggle, legend highlight, and chart expansion
+- blowdown-model controls for tank, feed, injector, grain, and transient simulation settings
+- interactive in-browser plots generated from raw sweep data after one CEA run
+- cached graph metric selection after the run, without recalculating CEA
+- automatic post-CEA blowdown execution from the highest-Isp case, with a manual rerun option
+- zoom, pan, legend toggle, legend highlight, chart expansion, and PNG graph download
 - downloadable CSV files for all converged cases and the highest-Isp case in the selected fixed conditions
 
 ## Performance
@@ -109,7 +116,7 @@ Advanced `Ae/At` controls:
 Plot settings:
 
 - `plots.enabled`: turn graph generation on or off
-- `plots.metric`: choose which result field is visualized in the heatmaps and raw UI chart
+- `plots.metric`: initial result field visualized in the heatmaps and raw UI chart; the browser UI can switch between all selectable graph metrics after one sweep
 - `plots.output_dir`: folder inside `outputs/` where the SVG files are written
 
 ## Output Files

@@ -2,6 +2,7 @@
 
 import json
 
+from blowdown_hybrid.ui_backend import build_default_ui_config as build_default_blowdown_ui_config
 from cea_hybrid.config import build_config, ensure_finite
 from cea_hybrid.constants import (
     CASE_FIELDS,
@@ -96,6 +97,7 @@ def build_default_ui_config(default_cpu_workers):
             "count": raw["sweeps"]["of"]["count"],
         },
         "metric_options": [{"key": key, "label": metric_label(key)} for key in METRIC_OPTIONS],
+        "blowdown": build_default_blowdown_ui_config(raw),
     }
 
 
@@ -222,6 +224,7 @@ def build_ui_response(config, sweep_results, runtime_seconds):
             "cpu_workers": sweep_results["cpu_workers"],
             "backend": sweep_results["backend"],
             "gpu_enabled": sweep_results["gpu_enabled"],
+            "metric_options": [{"key": key, "label": metric_label(key)} for key in METRIC_OPTIONS],
         },
         "controls": {
             "fuel_temperature_k": fuel_temperature_k,

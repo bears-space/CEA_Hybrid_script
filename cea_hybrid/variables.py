@@ -191,6 +191,13 @@ CASE_VARIABLES = [
         True,
     ),
     ResultVariable(
+        "thrust_sl_n",
+        "Actual Sea-Level Thrust [N]",
+        "sizing",
+        "Estimated sea-level thrust after applying the standard sea-level ambient-pressure correction to the sized nozzle exit area.",
+        True,
+    ),
+    ResultVariable(
         "dt_mm",
         "Throat Diameter [mm]",
         "sizing",

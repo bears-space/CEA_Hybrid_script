@@ -1,12 +1,23 @@
-"""HTTP server and sweep job state for the browser UI."""
+"""HTTP server and background analysis job state for the browser UI."""
 
 import json
 import threading
 import time
+from copy import deepcopy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+from blowdown_hybrid import BlowdownCancelled, estimate_total_steps, run_blowdown
+from blowdown_hybrid.ui_backend import (
+    build_config_from_payload as build_blowdown_config_from_payload,
+    build_error_response as build_blowdown_error_response,
+    build_not_run_response,
+    build_pending_response,
+    build_preview_response as build_blowdown_preview_response,
+    build_running_response,
+    build_ui_response as build_blowdown_ui_response,
+)
 from cea_hybrid.constants import DEFAULT_CPU_WORKERS, UI_DIR
 from cea_hybrid.sweep import SweepCancelled, count_total_combinations, run_sweep
 from cea_hybrid.ui_backend import (
@@ -22,6 +33,8 @@ JOB_LOCK = threading.Lock()
 SWEEP_JOB = {
     "job_id": 0,
     "status": "idle",
+    "job_type": None,
+    "phase": None,
     "message": "Ready to run.",
     "progress_completed": 0,
     "progress_total": 0,
@@ -40,6 +53,8 @@ def build_job_snapshot(include_result=True):
         snapshot = {
             "job_id": SWEEP_JOB["job_id"],
             "status": SWEEP_JOB["status"],
+            "job_type": SWEEP_JOB["job_type"],
+            "phase": SWEEP_JOB["phase"],
             "message": SWEEP_JOB["message"],
             "progress_completed": SWEEP_JOB["progress_completed"],
             "progress_total": SWEEP_JOB["progress_total"],
@@ -53,80 +68,201 @@ def build_job_snapshot(include_result=True):
     return snapshot
 
 
-def update_job_progress(job_id, completed, total):
+def _set_progress(job_id, completed, total, phase, message):
     with JOB_LOCK:
         if SWEEP_JOB["job_id"] != job_id or SWEEP_JOB["status"] not in {"running", "stopping"}:
             return
+        SWEEP_JOB["phase"] = phase
         SWEEP_JOB["progress_completed"] = int(completed)
         SWEEP_JOB["progress_total"] = int(total)
         SWEEP_JOB["progress_ratio"] = 0.0 if total <= 0 else max(0.0, min(1.0, completed / total))
-        if SWEEP_JOB["status"] == "running":
-            SWEEP_JOB["message"] = f"Running sweep {completed}/{total}..."
-        else:
-            SWEEP_JOB["message"] = f"Stopping sweep {completed}/{total}..."
+        SWEEP_JOB["message"] = message
 
 
-def run_sweep_job(job_id, config, cancel_event):
-    started_at = time.perf_counter()
+def _finish_job(job_id, status, message, result=None, error=None, progress_completed=None, progress_total=None):
+    with JOB_LOCK:
+        if SWEEP_JOB["job_id"] != job_id:
+            return
+        if progress_completed is not None:
+            SWEEP_JOB["progress_completed"] = int(progress_completed)
+        if progress_total is not None:
+            SWEEP_JOB["progress_total"] = int(progress_total)
+        total = SWEEP_JOB["progress_total"]
+        completed = SWEEP_JOB["progress_completed"]
+        SWEEP_JOB["progress_ratio"] = 0.0 if total <= 0 else max(0.0, min(1.0, completed / total))
+        SWEEP_JOB["status"] = status
+        SWEEP_JOB["job_type"] = None
+        SWEEP_JOB["phase"] = None
+        SWEEP_JOB["message"] = message
+        SWEEP_JOB["finished_at"] = time.time()
+        SWEEP_JOB["error"] = error
+        SWEEP_JOB["result"] = result
+        SWEEP_JOB["thread"] = None
+        SWEEP_JOB["cancel_event"] = None
+
+
+def run_sweep_job(job_id, cea_config, blowdown_config, cancel_event):
+    sweep_total = count_total_combinations(cea_config)
+    blowdown_total = estimate_total_steps(blowdown_config) if blowdown_config["auto_run_after_cea"] else 0
+    total_progress = sweep_total + blowdown_total
+    response = None
+    seed_case = None
+
     try:
+        sweep_started_at = time.perf_counter()
         sweep_results = run_sweep(
-            config,
-            progress_callback=lambda completed, total: update_job_progress(job_id, completed, total),
+            cea_config,
+            progress_callback=lambda completed, _: _set_progress(
+                job_id,
+                completed,
+                total_progress,
+                "cea",
+                f"Running CEA sweep {completed}/{sweep_total}...",
+            ),
             cancel_event=cancel_event,
         )
-        runtime_seconds = time.perf_counter() - started_at
-        response = build_ui_response(config, sweep_results, runtime_seconds)
+        sweep_runtime_seconds = time.perf_counter() - sweep_started_at
+        response = build_ui_response(cea_config, sweep_results, sweep_runtime_seconds)
+        seed_case = deepcopy(response["best_isp_case"]["case"])
+
+        if not blowdown_config["auto_run_after_cea"]:
+            response["blowdown"] = build_not_run_response(blowdown_config, seed_case)
+            _finish_job(
+                job_id,
+                "completed",
+                "CEA sweep complete.",
+                result=response,
+                progress_completed=sweep_total,
+                progress_total=total_progress,
+            )
+            return
+
+        response["blowdown"] = build_running_response(blowdown_config, seed_case)
         with JOB_LOCK:
             if SWEEP_JOB["job_id"] != job_id:
                 return
-            SWEEP_JOB["status"] = "completed"
-            SWEEP_JOB["message"] = "Sweep complete."
-            SWEEP_JOB["progress_completed"] = sweep_results["total_combinations"]
-            SWEEP_JOB["progress_total"] = sweep_results["total_combinations"]
-            SWEEP_JOB["progress_ratio"] = 1.0
-            SWEEP_JOB["finished_at"] = time.time()
-            SWEEP_JOB["error"] = None
             SWEEP_JOB["result"] = response
-            SWEEP_JOB["thread"] = None
-            SWEEP_JOB["cancel_event"] = None
-    except SweepCancelled:
-        with JOB_LOCK:
-            if SWEEP_JOB["job_id"] != job_id:
-                return
-            SWEEP_JOB["status"] = "cancelled"
-            SWEEP_JOB["message"] = "Sweep cancelled."
-            SWEEP_JOB["finished_at"] = time.time()
-            SWEEP_JOB["error"] = None
-            SWEEP_JOB["result"] = None
-            SWEEP_JOB["thread"] = None
-            SWEEP_JOB["cancel_event"] = None
+            SWEEP_JOB["phase"] = "blowdown"
+            SWEEP_JOB["message"] = response["blowdown"]["message"]
+
+        blowdown_started_at = time.perf_counter()
+        blowdown_runtime = run_blowdown(
+            blowdown_config,
+            seed_case,
+            progress_callback=lambda completed, total: _set_progress(
+                job_id,
+                sweep_total + completed,
+                total_progress,
+                "blowdown",
+                f"Running preliminary 0D blowdown {completed}/{total}...",
+            ),
+            cancel_event=cancel_event,
+        )
+        blowdown_runtime_seconds = time.perf_counter() - blowdown_started_at
+        response["blowdown"] = build_blowdown_ui_response(
+            blowdown_config,
+            seed_case,
+            blowdown_runtime,
+            blowdown_runtime_seconds,
+        )
+        _finish_job(
+            job_id,
+            "completed",
+            "CEA sweep and preliminary 0D blowdown complete.",
+            result=response,
+            progress_completed=total_progress,
+            progress_total=total_progress,
+        )
+    except (SweepCancelled, BlowdownCancelled):
+        if response is not None and seed_case is not None:
+            response["blowdown"] = build_pending_response(
+                blowdown_config,
+                seed_case,
+                status="cancelled",
+                message="Preliminary 0D blowdown run cancelled.",
+            )
+        _finish_job(job_id, "cancelled", "Analysis cancelled.", result=response)
     except Exception as exc:
-        with JOB_LOCK:
-            if SWEEP_JOB["job_id"] != job_id:
-                return
-            SWEEP_JOB["status"] = "error"
-            SWEEP_JOB["message"] = "Sweep failed."
-            SWEEP_JOB["finished_at"] = time.time()
-            SWEEP_JOB["error"] = str(exc)
-            SWEEP_JOB["result"] = None
-            SWEEP_JOB["thread"] = None
-            SWEEP_JOB["cancel_event"] = None
+        if response is not None and seed_case is not None:
+            response["blowdown"] = build_blowdown_error_response(blowdown_config, seed_case, str(exc))
+            _finish_job(
+                job_id,
+                "completed",
+                "CEA sweep complete. Preliminary 0D blowdown failed.",
+                result=response,
+                progress_completed=sweep_total,
+                progress_total=total_progress,
+            )
+            return
+        _finish_job(job_id, "error", "CEA sweep failed.", error=str(exc))
+
+
+def run_blowdown_job(job_id, blowdown_config, seed_case, base_result, cancel_event):
+    total_progress = estimate_total_steps(blowdown_config)
+    result = deepcopy(base_result)
+
+    try:
+        blowdown_started_at = time.perf_counter()
+        blowdown_runtime = run_blowdown(
+            blowdown_config,
+            seed_case,
+            progress_callback=lambda completed, total: _set_progress(
+                job_id,
+                completed,
+                total_progress,
+                "blowdown",
+                f"Running preliminary 0D blowdown {completed}/{total}...",
+            ),
+            cancel_event=cancel_event,
+        )
+        blowdown_runtime_seconds = time.perf_counter() - blowdown_started_at
+        result["blowdown"] = build_blowdown_ui_response(
+            blowdown_config,
+            seed_case,
+            blowdown_runtime,
+            blowdown_runtime_seconds,
+        )
+        _finish_job(
+            job_id,
+            "completed",
+            "Preliminary 0D blowdown complete.",
+            result=result,
+            progress_completed=total_progress,
+            progress_total=total_progress,
+        )
+    except BlowdownCancelled:
+        result["blowdown"] = build_pending_response(
+            blowdown_config,
+            seed_case,
+            status="cancelled",
+            message="Preliminary 0D blowdown run cancelled.",
+        )
+        _finish_job(job_id, "cancelled", "Preliminary 0D blowdown cancelled.", result=result)
+    except Exception as exc:
+        result["blowdown"] = build_blowdown_error_response(blowdown_config, seed_case, str(exc))
+        _finish_job(job_id, "error", "Preliminary 0D blowdown failed.", result=result, error=str(exc))
 
 
 def start_sweep_job(payload):
-    config = build_raw_config_from_payload(payload)
-    total_combinations = count_total_combinations(config)
+    cea_config = build_raw_config_from_payload(payload)
+    blowdown_config = build_blowdown_config_from_payload(payload.get("blowdown", {}))
+    total_combinations = count_total_combinations(cea_config)
+    total_progress = total_combinations + (
+        estimate_total_steps(blowdown_config) if blowdown_config["auto_run_after_cea"] else 0
+    )
     cancel_event = threading.Event()
 
     with JOB_LOCK:
         if SWEEP_JOB["status"] in {"running", "stopping"}:
-            raise RuntimeError("A sweep is already running.")
+            raise RuntimeError("An analysis is already running.")
         job_id = SWEEP_JOB["job_id"] + 1
         SWEEP_JOB["job_id"] = job_id
         SWEEP_JOB["status"] = "running"
-        SWEEP_JOB["message"] = f"Running sweep 0/{total_combinations}..."
+        SWEEP_JOB["job_type"] = "sweep"
+        SWEEP_JOB["phase"] = "cea"
+        SWEEP_JOB["message"] = f"Running CEA sweep 0/{total_combinations}..."
         SWEEP_JOB["progress_completed"] = 0
-        SWEEP_JOB["progress_total"] = total_combinations
+        SWEEP_JOB["progress_total"] = total_progress
         SWEEP_JOB["progress_ratio"] = 0.0
         SWEEP_JOB["started_at"] = time.time()
         SWEEP_JOB["finished_at"] = None
@@ -135,7 +271,7 @@ def start_sweep_job(payload):
         SWEEP_JOB["cancel_event"] = cancel_event
         worker = threading.Thread(
             target=run_sweep_job,
-            args=(job_id, config, cancel_event),
+            args=(job_id, cea_config, blowdown_config, cancel_event),
             daemon=True,
         )
         SWEEP_JOB["thread"] = worker
@@ -144,14 +280,75 @@ def start_sweep_job(payload):
     return build_job_snapshot(include_result=False)
 
 
+def start_blowdown_job(payload):
+    blowdown_config = build_blowdown_config_from_payload(payload)
+    cancel_event = threading.Event()
+
+    with JOB_LOCK:
+        if SWEEP_JOB["status"] in {"running", "stopping"}:
+            raise RuntimeError("An analysis is already running.")
+        if SWEEP_JOB["result"] is None or "best_isp_case" not in SWEEP_JOB["result"]:
+            raise RuntimeError("Run a CEA sweep first so the preliminary 0D blowdown model has a seed case.")
+
+        base_result = deepcopy(SWEEP_JOB["result"])
+        seed_case = deepcopy(base_result["best_isp_case"]["case"])
+        base_result["blowdown"] = build_running_response(blowdown_config, seed_case)
+
+        job_id = SWEEP_JOB["job_id"] + 1
+        total_progress = estimate_total_steps(blowdown_config)
+        SWEEP_JOB["job_id"] = job_id
+        SWEEP_JOB["status"] = "running"
+        SWEEP_JOB["job_type"] = "blowdown"
+        SWEEP_JOB["phase"] = "blowdown"
+        SWEEP_JOB["message"] = base_result["blowdown"]["message"]
+        SWEEP_JOB["progress_completed"] = 0
+        SWEEP_JOB["progress_total"] = total_progress
+        SWEEP_JOB["progress_ratio"] = 0.0
+        SWEEP_JOB["started_at"] = time.time()
+        SWEEP_JOB["finished_at"] = None
+        SWEEP_JOB["error"] = None
+        SWEEP_JOB["result"] = base_result
+        SWEEP_JOB["cancel_event"] = cancel_event
+        worker = threading.Thread(
+            target=run_blowdown_job,
+            args=(job_id, blowdown_config, seed_case, base_result, cancel_event),
+            daemon=True,
+        )
+        SWEEP_JOB["thread"] = worker
+
+    worker.start()
+    return build_job_snapshot(include_result=False)
+
+
+def preview_blowdown(payload):
+    try:
+        blowdown_config = build_blowdown_config_from_payload(payload)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "message": "Live sizing preview needs valid inputs.",
+            "error": str(exc),
+        }
+
+    with JOB_LOCK:
+        if SWEEP_JOB["result"] is None or "best_isp_case" not in SWEEP_JOB["result"]:
+            return {
+                "status": "needs_seed",
+                "message": "Run a CEA sweep first to unlock live blowdown sizing estimates from the highest-Isp seed case.",
+                "error": None,
+            }
+        seed_case = deepcopy(SWEEP_JOB["result"]["best_isp_case"]["case"])
+
+    return build_blowdown_preview_response(blowdown_config, seed_case)
+
+
 def stop_sweep_job():
     with JOB_LOCK:
         if SWEEP_JOB["status"] not in {"running", "stopping"}:
-            raise RuntimeError("No sweep is currently running.")
+            raise RuntimeError("No analysis is currently running.")
         SWEEP_JOB["status"] = "stopping"
-        SWEEP_JOB["message"] = (
-            f"Stopping sweep {SWEEP_JOB['progress_completed']}/{SWEEP_JOB['progress_total']}..."
-        )
+        phase_label = "blowdown" if SWEEP_JOB["phase"] == "blowdown" else "CEA sweep"
+        SWEEP_JOB["message"] = f"Stopping {phase_label}..."
         cancel_event = SWEEP_JOB["cancel_event"]
     if cancel_event is not None:
         cancel_event.set()
@@ -205,6 +402,14 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             if route == "/api/run-sweep":
                 payload = self._read_json_body()
                 self._write_json(start_sweep_job(payload), status=HTTPStatus.ACCEPTED)
+                return
+            if route == "/api/run-blowdown":
+                payload = self._read_json_body()
+                self._write_json(start_blowdown_job(payload), status=HTTPStatus.ACCEPTED)
+                return
+            if route == "/api/blowdown-preview":
+                payload = self._read_json_body()
+                self._write_json(preview_blowdown(payload))
                 return
             if route == "/api/stop-sweep":
                 self._write_json(stop_sweep_job())

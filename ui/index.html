@@ -15,7 +15,7 @@
           <p class="eyebrow">BEARS Propulsion</p>
           <h1>Hybrid Rocket Analysis</h1>
           <p class="lede">
-            Evaluate NASA CEA nozzle and mixture sweeps for an N2O and paraffin engine with ABS structure, then inspect interactive plots and raw CEA result points.
+            Evaluate NASA CEA nozzle and mixture sweeps for an N2O and paraffin engine with ABS structure, then inspect interactive plots, raw CEA result points, and a preliminary 0D blowdown model seeded from the best CEA case.
           </p>
         </div>
       </div>
@@ -44,7 +44,7 @@
         <section class="panel intro-panel">
           <h2>Analysis Setup</h2>
           <p>
-            Set the CEA chamber condition and sweep ranges for the N2O and paraffin engine with ABS structure.
+            Set the CEA chamber condition and sweep ranges, then configure the preliminary 0D blowdown model that can run automatically from the highest-Isp CEA case.
           </p>
         </section>
 
@@ -173,18 +173,254 @@
             </section>
           </details>
 
-          <section class="form-section">
-            <div class="section-header">
-              <h3>Display</h3>
-              <p>Metric shown in the browser plot and CSV summaries.</p>
-            </div>
-            <label class="field">
-              <span class="field-label">Plot Metric</span>
-              <select id="selected_metric"></select>
-            </label>
-          </section>
+          <details class="advanced-panel" open>
+            <summary>Preliminary 0D blowdown model</summary>
+            <section class="form-section advanced-section">
+              <div class="section-header">
+                <h3>Execution</h3>
+                <p>The preliminary 0D blowdown solver uses the highest-Isp converged CEA case as its seed design point.</p>
+              </div>
+              <label class="checkbox-field">
+                <input id="blowdown_auto_run_after_cea" type="checkbox">
+                <span>Run preliminary 0D blowdown automatically after CEA</span>
+              </label>
+              <div class="field-grid two-up">
+                <label class="field">
+                  <span class="field-label">Mode</span>
+                  <select id="blowdown_ui_mode">
+                    <option value="basic">Basic / high-level</option>
+                    <option value="advanced">Advanced / manual overrides</option>
+                  </select>
+                </label>
+                <div class="field read-only-callout">
+                  <span class="field-label">CEA Seed</span>
+                  <p class="field-note">Basic mode uses the latest completed highest-Isp CEA case for Isp, O/F, c*, temperatures, and ABS fraction.</p>
+                </div>
+              </div>
+              <p class="field-note">
+                Disable automatic execution if you want to run or rerun the preliminary 0D blowdown model manually against the latest completed CEA result.
+              </p>
+            </section>
 
-          <button id="runButton" type="submit" class="run-button">Run Sweep</button>
+            <section class="form-section advanced-section">
+              <div class="section-header">
+                <h3>High-Level Inputs</h3>
+                <p>These are the main sizing controls used to derive tank mass and volume, injector area, and initial grain geometry.</p>
+              </div>
+              <p class="field-note">
+                Basic mode keeps these as the primary inputs. Live derived values below show which first-pass equation set is currently determining tank loading,
+                injector area, and grain geometry.
+              </p>
+              <div class="field-grid three-up">
+                <label class="field">
+                  <span class="field-label">Burn Time [s]</span>
+                  <input id="blowdown_sim_burn_time_s" type="number" step="0.1" min="0.1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Usable Oxidizer Fraction [-]</span>
+                  <input id="blowdown_tank_usable_oxidizer_fraction" type="number" step="0.01" min="0.01" max="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Initial Fill Fraction [-]</span>
+                  <input id="blowdown_tank_initial_fill_fraction" type="number" step="0.01" min="0.01" max="0.99">
+                </label>
+                <label class="field">
+                  <span class="field-label">Target Initial Gox [kg/m^2/s]</span>
+                  <input id="blowdown_grain_target_initial_gox_kg_m2_s" type="number" step="1" min="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Regression Coefficient a [SI]</span>
+                  <input id="blowdown_grain_a_reg_si" type="number" step="any" min="0.0000001">
+                </label>
+                <label class="field">
+                  <span class="field-label">Regression Exponent n [-]</span>
+                  <input id="blowdown_grain_n_reg" type="number" step="0.01" min="0.01">
+                </label>
+                <label class="field">
+                  <span class="field-label">Port Count</span>
+                  <input id="blowdown_grain_port_count" type="number" step="1" min="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Fuel Usable Fraction [-]</span>
+                  <input id="blowdown_grain_fuel_usable_fraction" type="number" step="0.01" min="0.01" max="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Injector Cd [-]</span>
+                  <input id="blowdown_injector_cd" type="number" step="0.01" min="0.01">
+                </label>
+                <label class="field">
+                  <span class="field-label">Injector Hole Count</span>
+                  <input id="blowdown_injector_hole_count" type="number" step="1" min="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Injector Delta-p Mode</span>
+                  <select id="blowdown_injector_delta_p_mode">
+                    <option value="fraction_of_pc">Fraction of chamber pressure</option>
+                    <option value="explicit">Explicit delta-p</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Injector Delta-p [bar]</span>
+                  <input id="blowdown_injector_delta_p_pa" type="number" step="0.1" min="0.1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Injector Delta-p / Pc [-]</span>
+                  <input id="blowdown_injector_delta_p_fraction_of_pc" type="number" step="0.01" min="0.01">
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section advanced-section">
+              <div class="section-header">
+                <h3>Live Derived Results</h3>
+                <p>Read-only first-pass estimates derived from the current basic inputs and the latest highest-Isp CEA seed.</p>
+              </div>
+              <div id="blowdownLivePreview" class="best-isp-output">
+                <div class="empty-state">Run a CEA sweep to unlock live blowdown sizing estimates.</div>
+              </div>
+            </section>
+
+            <section id="blowdownAdvancedControls" class="form-section advanced-section">
+              <div class="section-header">
+                <h3>Advanced / Manual Overrides</h3>
+                <p>These controls are hidden in basic mode. Enable an override to stop auto-deriving that field.</p>
+              </div>
+              <div class="field-grid three-up">
+                <label class="field">
+                  <span class="field-label">Tank Initial Temperature [K]</span>
+                  <input id="blowdown_tank_initial_temp_k" type="number" step="0.01" min="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Tank Volume Override [L]</span>
+                  <input id="blowdown_tank_volume_l" type="number" step="0.1" min="0.1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Tank Mass Override [kg]</span>
+                  <input id="blowdown_tank_initial_mass_kg" type="number" step="0.01" min="0.01">
+                </label>
+              </div>
+              <div class="override-row">
+                <label class="checkbox-field">
+                  <input id="blowdown_tank_override_mass_volume" type="checkbox">
+                  <span>Override tank mass and volume</span>
+                </label>
+                <button id="blowdown_tank_reset_override" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
+              </div>
+              <div class="field-grid two-up">
+                <label class="field">
+                  <span class="field-label">Injector Total Area Override [mm^2]</span>
+                  <input id="blowdown_injector_total_area_mm2" type="number" step="0.01" min="0.01">
+                </label>
+                <div class="override-row override-row-compact">
+                  <label class="checkbox-field">
+                    <input id="blowdown_injector_override_total_area" type="checkbox">
+                    <span>Override injector total area</span>
+                  </label>
+                  <button id="blowdown_injector_reset_override" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
+                </div>
+              </div>
+              <div class="field-grid three-up">
+                <label class="field">
+                  <span class="field-label">Initial Port Radius Override [mm]</span>
+                  <input id="blowdown_grain_initial_port_radius_mm" type="number" step="0.1" min="0.1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Grain Length Override [m]</span>
+                  <input id="blowdown_grain_length_m" type="number" step="0.001" min="0.001">
+                </label>
+                <label class="field">
+                  <span class="field-label">Outer Radius Override [mm]</span>
+                  <input id="blowdown_grain_outer_radius_mm" type="number" step="0.1" min="0.1">
+                </label>
+              </div>
+              <div class="override-stack">
+                <div class="override-row">
+                  <label class="checkbox-field">
+                    <input id="blowdown_grain_override_initial_port_radius" type="checkbox">
+                    <span>Override initial port radius</span>
+                  </label>
+                  <button id="blowdown_grain_reset_initial_port_radius" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
+                </div>
+                <div class="override-row">
+                  <label class="checkbox-field">
+                    <input id="blowdown_grain_override_grain_length" type="checkbox">
+                    <span>Override grain length</span>
+                  </label>
+                  <button id="blowdown_grain_reset_grain_length" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
+                </div>
+                <div class="override-row">
+                  <label class="checkbox-field">
+                    <input id="blowdown_grain_override_outer_radius" type="checkbox">
+                    <span>Override outer radius</span>
+                  </label>
+                  <button id="blowdown_grain_reset_outer_radius" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
+                </div>
+              </div>
+            </section>
+
+            <section id="blowdownFeedSection" class="form-section advanced-section">
+              <div class="section-header">
+                <h3>Feed</h3>
+                <p>Equivalent lumped feed losses between tank and injector.</p>
+              </div>
+              <div class="field-grid two-up">
+                <label class="field">
+                  <span class="field-label">Line ID [mm]</span>
+                  <input id="blowdown_feed_line_id_mm" type="number" step="0.1" min="0.1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Line Length [m]</span>
+                  <input id="blowdown_feed_line_length_m" type="number" step="0.01" min="0">
+                </label>
+                <label class="field">
+                  <span class="field-label">Friction Factor [-]</span>
+                  <input id="blowdown_feed_friction_factor" type="number" step="0.001" min="0">
+                </label>
+                <label class="field">
+                  <span class="field-label">Minor Loss K [-]</span>
+                  <input id="blowdown_feed_minor_loss_k_total" type="number" step="0.1" min="0">
+                </label>
+              </div>
+            </section>
+
+            <section id="blowdownSolverSection" class="form-section advanced-section">
+              <div class="section-header">
+                <h3>Simulation</h3>
+                <p>Advanced time-marching and convergence settings for the transient solution.</p>
+              </div>
+              <div class="field-grid two-up">
+                <label class="field">
+                  <span class="field-label">dt [s]</span>
+                  <input id="blowdown_sim_dt_s" type="number" step="0.001" min="0.0001">
+                </label>
+                <label class="field">
+                  <span class="field-label">Ambient Pressure [bar]</span>
+                  <input id="blowdown_sim_ambient_pressure_bar" type="number" step="0.001" min="0">
+                </label>
+                <label class="field">
+                  <span class="field-label">Max Inner Iterations</span>
+                  <input id="blowdown_sim_max_inner_iterations" type="number" step="1" min="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Relaxation [-]</span>
+                  <input id="blowdown_sim_relaxation" type="number" step="0.01" min="0.01" max="1">
+                </label>
+                <label class="field">
+                  <span class="field-label">Relative Tolerance [-]</span>
+                  <input id="blowdown_sim_relative_tolerance" type="number" step="any" min="0.000000001">
+                </label>
+                <label class="field">
+                  <span class="field-label">Tank Quality Cutoff [-]</span>
+                  <input id="blowdown_sim_stop_quality" type="number" step="0.01" min="0.01" max="1">
+                </label>
+              </div>
+            </section>
+          </details>
+
+          <div class="form-button-stack">
+            <button id="runButton" type="submit" class="run-button">Run CEA Sweep</button>
+            <button id="runBlowdownButton" type="button" class="run-button run-button-secondary">Run 0D Blowdown Only</button>
+          </div>
 
           <div id="sweepStatus" class="sweep-status hidden" aria-live="polite">
             <div class="sweep-status-head">
@@ -238,14 +474,68 @@
 
         <section class="panel reveal">
           <div class="panel-header">
-            <h2>Plots</h2>
-            <p>Interactive charts built directly in the browser from the raw CEA sweep results.</p>
+            <h2>Preliminary 0D Blowdown Model</h2>
+            <p>Transient tank, feed, injector, and regression model seeded from the highest-Isp CEA case, with explicit injector and assumption reporting.</p>
+          </div>
+          <div id="blowdownOutput" class="best-isp-output">
+            <div class="empty-state">Run a CEA sweep to seed the preliminary 0D blowdown model.</div>
+          </div>
+          <div class="chart-stack">
+            <article class="chart-section">
+              <div class="chart-header">
+                <h3>Pressures vs Time</h3>
+                <p>Tank pressure, injector inlet pressure, and chamber pressure over the transient run.</p>
+              </div>
+              <div id="blowdownPressureChart" class="chart-host clickable-chart">
+                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
+              </div>
+            </article>
+            <article class="chart-section">
+              <div class="chart-header">
+                <h3>Mass Flow vs Time</h3>
+                <p>Oxidizer, fuel, and total propellant flow histories.</p>
+              </div>
+              <div id="blowdownMassFlowChart" class="chart-host clickable-chart">
+                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
+              </div>
+            </article>
+            <article class="chart-section">
+              <div class="chart-header">
+                <h3>Thrust vs Time</h3>
+                <p>Transient thrust predicted by the constant-c* and constant-Cf 0D blowdown model.</p>
+              </div>
+              <div id="blowdownThrustChart" class="chart-host clickable-chart">
+                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
+              </div>
+            </article>
+            <article class="chart-section">
+              <div class="chart-header">
+                <h3>State vs Time</h3>
+                <p>Dimensionless state variables including O/F and tank quality.</p>
+              </div>
+              <div id="blowdownStateChart" class="chart-host clickable-chart">
+                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-header">
+            <div>
+              <h2>Plots</h2>
+              <p>Interactive charts built directly in the browser from the raw CEA sweep results.</p>
+            </div>
+            <label class="field chart-metric-field">
+              <span class="field-label">Graph Metric</span>
+              <select id="selected_metric" disabled></select>
+            </label>
           </div>
           <div class="chart-stack">
             <article class="chart-section">
               <div class="chart-header">
                 <h3 id="overviewMetricTitle">Raw metric vs O/F</h3>
-                <p>Each trace is one area ratio.</p>
+                <p>Each trace is one area ratio. Run one sweep first, then switch between preloaded graph metrics without recalculating CEA.</p>
               </div>
               <div id="overviewMetricChart" class="chart-host chart-host-wide clickable-chart" data-chart-title="Raw metric vs O/F">
                 <div class="empty-state">Run a sweep to populate the chart.</div>

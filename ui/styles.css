@@ -273,6 +273,41 @@ thead th,
   margin-top: 14px;
 }
 
+.read-only-callout {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-muted);
+}
+
+.override-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.override-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-muted);
+}
+
+.override-row-compact {
+  margin-top: 14px;
+}
+
+.run-button-inline {
+  width: auto;
+  min-width: 0;
+  padding: 10px 14px;
+  box-shadow: none;
+}
+
 .checkbox-field {
   display: flex;
   align-items: center;
@@ -446,9 +481,19 @@ body[data-theme="dark"] select:focus {
   box-shadow: 0 14px 28px rgba(15, 107, 116, 0.22);
 }
 
+.form-button-stack {
+  display: grid;
+  gap: 10px;
+}
+
 .run-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 18px 34px rgba(15, 107, 116, 0.26);
+}
+
+.run-button-secondary {
+  background: linear-gradient(135deg, #3a4f5f 0%, #263846 100%);
+  box-shadow: 0 14px 28px rgba(38, 56, 70, 0.22);
 }
 
 .run-button.is-stop {
@@ -584,6 +629,11 @@ body[data-theme="dark"] select:focus {
   max-width: 620px;
 }
 
+.chart-metric-field {
+  min-width: 260px;
+  max-width: 320px;
+}
+
 .optimizer-grid {
   display: grid;
   gap: 14px;
@@ -658,6 +708,10 @@ body[data-theme="dark"] select:focus {
   border-radius: 18px;
   border: 1px solid var(--line);
   background: rgba(251, 252, 253, 0.96);
+}
+
+.best-isp-card-compact {
+  padding: 16px;
 }
 
 .best-isp-card-head {
@@ -745,6 +799,17 @@ body[data-theme="dark"] select:focus {
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.blowdown-assumption-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted-strong);
+  line-height: 1.6;
+}
+
+.blowdown-assumption-list li + li {
+  margin-top: 8px;
 }
 
 .download-grid {
@@ -864,6 +929,8 @@ body[data-theme="dark"] select:focus {
 .chart-tool-group {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .chart-tool-button,
