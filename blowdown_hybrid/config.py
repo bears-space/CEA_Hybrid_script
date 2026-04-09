@@ -9,64 +9,28 @@ from cea_hybrid.config import ensure_finite
 from blowdown_hybrid.constants import (
     INJECTOR_DELTA_P_MODE_EXPLICIT,
     INJECTOR_DELTA_P_MODE_FRACTION_OF_PC,
+    INJECTOR_PRESSURE_DROP_POLICY_NOMINAL,
+    INJECTOR_PRESSURE_DROP_POLICY_OPTIONS,
+    REGRESSION_PRESET_CUSTOM,
+    REGRESSION_PRESET_OPTIONS,
+    REGRESSION_PRESET_PROJECT_DEFAULT,
     SEED_CASE_HIGHEST_ISP,
     UI_MODE_ADVANCED,
     UI_MODE_BASIC,
 )
+from blowdown_hybrid.defaults import (
+    DEFAULT_CONFIG as DEFAULT_CONFIG_JSON,
+    PROJECT_DEFAULT_BURN_TIME_S,
+    PROJECT_DEFAULT_FUEL_USABLE_FRACTION,
+    PROJECT_DEFAULT_INJECTOR_CD,
+    PROJECT_DEFAULT_INJECTOR_HOLE_COUNT,
+    PROJECT_DEFAULT_PORT_COUNT,
+    PROJECT_DEFAULT_USABLE_OXIDIZER_FRACTION,
+)
+from blowdown_hybrid.thermo import validate_n2o_temperature_k
 
 
-DEFAULT_CONFIG = {
-    "auto_run_after_cea": True,
-    "ui_mode": UI_MODE_BASIC,
-    "seed_case": SEED_CASE_HIGHEST_ISP,
-    "tank": {
-        "volume_m3": 0.028,
-        "initial_mass_kg": 18.0,
-        "initial_temp_k": 293.15,
-        "usable_oxidizer_fraction": 0.95,
-        "initial_fill_fraction": 0.8,
-        "override_mass_volume": False,
-    },
-    "feed": {
-        "line_id_m": 0.012,
-        "line_length_m": 1.2,
-        "friction_factor": 0.02,
-        "minor_loss_k_total": 8.0,
-    },
-    "injector": {
-        "cd": 0.8,
-        "hole_count": 24,
-        "total_area_m2": 7.5e-5,
-        "override_total_area": False,
-        "delta_p_mode": INJECTOR_DELTA_P_MODE_FRACTION_OF_PC,
-        "delta_p_pa": 6.0e5,
-        "delta_p_fraction_of_pc": 0.2,
-    },
-    "grain": {
-        "abs_density_kg_m3": 1050.0,
-        "paraffin_density_kg_m3": 930.0,
-        "a_reg_si": 5.0e-5,
-        "n_reg": 0.5,
-        "port_count": 1,
-        "target_initial_gox_kg_m2_s": 250.0,
-        "initial_port_radius_m": 0.022,
-        "grain_length_m": 0.45,
-        "outer_radius_m": 0.045,
-        "fuel_usable_fraction": 0.98,
-        "override_initial_port_radius": False,
-        "override_grain_length": False,
-        "override_outer_radius": False,
-    },
-    "simulation": {
-        "dt_s": 0.02,
-        "burn_time_s": 8.0,
-        "ambient_pressure_pa": 101325.0,
-        "max_inner_iterations": 80,
-        "relaxation": 0.35,
-        "relative_tolerance": 1e-6,
-        "stop_when_tank_quality_exceeds": 0.95,
-    },
-}
+DEFAULT_CONFIG = DEFAULT_CONFIG_JSON
 
 
 def _merge_defaults(defaults, raw):
@@ -105,6 +69,7 @@ def build_config(raw=None):
             "hole_count": int(merged["injector"]["hole_count"]),
             "total_area_m2": float(merged["injector"]["total_area_m2"]),
             "override_total_area": bool(merged["injector"]["override_total_area"]),
+            "pressure_drop_policy": merged["injector"]["pressure_drop_policy"],
             "delta_p_mode": merged["injector"]["delta_p_mode"],
             "delta_p_pa": float(merged["injector"]["delta_p_pa"]),
             "delta_p_fraction_of_pc": float(merged["injector"]["delta_p_fraction_of_pc"]),
@@ -112,6 +77,7 @@ def build_config(raw=None):
         "grain": {
             "abs_density_kg_m3": float(merged["grain"]["abs_density_kg_m3"]),
             "paraffin_density_kg_m3": float(merged["grain"]["paraffin_density_kg_m3"]),
+            "regression_preset": merged["grain"]["regression_preset"],
             "a_reg_si": float(merged["grain"]["a_reg_si"]),
             "n_reg": float(merged["grain"]["n_reg"]),
             "port_count": int(merged["grain"]["port_count"]),
@@ -183,6 +149,7 @@ def validate_config(config):
         raise ValueError("Initial tank mass must be positive.")
     if config["tank"]["initial_temp_k"] <= 0.0:
         raise ValueError("Initial tank temperature must be positive.")
+    validate_n2o_temperature_k(config["tank"]["initial_temp_k"])
     if not 0.0 < config["tank"]["usable_oxidizer_fraction"] <= 1.0:
         raise ValueError("Usable oxidizer fraction must be in the interval (0, 1].")
     if not 0.0 < config["tank"]["initial_fill_fraction"] < 1.0:
@@ -203,6 +170,8 @@ def validate_config(config):
         raise ValueError("Injector hole count must be positive.")
     if config["injector"]["total_area_m2"] <= 0.0:
         raise ValueError("Manual injector total area must be positive.")
+    if config["injector"]["pressure_drop_policy"] not in INJECTOR_PRESSURE_DROP_POLICY_OPTIONS:
+        raise ValueError("Unknown injector pressure-drop policy.")
     if config["injector"]["delta_p_mode"] not in {
         INJECTOR_DELTA_P_MODE_EXPLICIT,
         INJECTOR_DELTA_P_MODE_FRACTION_OF_PC,
@@ -217,6 +186,8 @@ def validate_config(config):
         raise ValueError("ABS density must be positive.")
     if config["grain"]["paraffin_density_kg_m3"] <= 0.0:
         raise ValueError("Paraffin density must be positive.")
+    if config["grain"]["regression_preset"] not in REGRESSION_PRESET_OPTIONS:
+        raise ValueError("Unknown regression preset.")
     if config["grain"]["a_reg_si"] <= 0.0:
         raise ValueError("Regression coefficient a must be positive.")
     if config["grain"]["n_reg"] <= 0.0:
@@ -252,3 +223,19 @@ def validate_config(config):
 
 def estimate_total_steps(config):
     return max(1, int(math.ceil(config["simulation"]["burn_time_s"] / config["simulation"]["dt_s"])))
+
+
+def regression_parameters_for_mode(config):
+    """Return the effective regression coefficients and their source label."""
+    preset_key = config["grain"]["regression_preset"]
+    if preset_key != REGRESSION_PRESET_CUSTOM:
+        preset = REGRESSION_PRESET_OPTIONS[preset_key]
+        return float(preset["a_reg_si"]), float(preset["n_reg"]), f"preset:{preset_key}"
+    return float(config["grain"]["a_reg_si"]), float(config["grain"]["n_reg"]), "advanced_manual"
+
+
+def injector_pressure_drop_fraction_for_mode(config):
+    """Return the effective injector delta-p fraction and its source label for basic mode."""
+    policy_key = config["injector"]["pressure_drop_policy"]
+    policy = INJECTOR_PRESSURE_DROP_POLICY_OPTIONS[policy_key]
+    return float(policy["delta_p_fraction_of_pc"]), f"policy:{policy_key}"

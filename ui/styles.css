@@ -258,6 +258,7 @@ thead th,
 }
 
 .advanced-panel {
+  order: 20;
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -366,6 +367,46 @@ thead th,
   gap: 8px;
   font-size: 0.92rem;
   font-weight: 600;
+}
+
+.field-label-text {
+  display: inline-flex;
+}
+
+.hover-hint {
+  position: relative;
+  width: fit-content;
+  cursor: help;
+}
+
+.hover-hint::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(4px);
+  width: min(320px, 72vw);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #2b3a46;
+  background: #18242d;
+  color: #f5f8fa;
+  box-shadow: 0 16px 40px rgba(17, 32, 42, 0.25);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-transform: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+  z-index: 40;
+}
+
+.hover-hint:hover::after,
+.hover-hint:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 input,
@@ -482,6 +523,7 @@ body[data-theme="dark"] select:focus {
 }
 
 .form-button-stack {
+  order: 30;
   display: grid;
   gap: 10px;
 }
@@ -507,6 +549,7 @@ body[data-theme="dark"] select:focus {
 }
 
 .sweep-status {
+  order: 40;
   padding: 16px;
   border-radius: 16px;
   background: var(--panel-accent);
@@ -779,6 +822,7 @@ body[data-theme="dark"] select:focus {
 }
 
 .compact-output-label {
+  display: inline-flex;
   color: var(--muted);
   font-size: 0.7rem;
   font-weight: 800;
@@ -985,6 +1029,10 @@ body[data-theme="dark"] select:focus {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .chart-legend-item {
@@ -1018,6 +1066,21 @@ body[data-theme="dark"] select:focus {
 
 .chart-legend-label {
   font-size: 0.88rem;
+}
+
+.chart-legend::-webkit-scrollbar {
+  width: 10px;
+}
+
+.chart-legend::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(82, 100, 113, 0.35);
+  background-clip: padding-box;
+}
+
+.chart-legend::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .chart-tooltip {

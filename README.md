@@ -1,136 +1,325 @@
-# CEA Hybrid Script
+# Hybrid Rocket Workflow
 
-This project runs NASA CEA-based performance calculations for an N2O and paraffin hybrid rocket engine with ABS structure represented by a styrene/butadiene surrogate blend. The project includes both a sweep script and a local browser UI for running parameter studies, inspecting raw CEA result points, and running a transient blowdown model seeded from the best CEA case.
+This project now has two layers:
 
-## What It Does
+- `cea_hybrid/` and `blowdown_hybrid/`: the existing working physics and UI/backend codepaths
+- `src/`: the new modular workflow layer for standalone CEA runs, nominal 0D runs, Step 1 sensitivity/corner studies, and Step 2 geometry freeze
 
-- Evaluates N2O/paraffin/ABS-structure hybrid rocket performance with the `cea` Python package
-- Sweeps across user-defined `O/F` and `Ae/At` values, with configurable fuel temperature, oxidizer temperature, and infill target
-- Runs a transient nitrous blowdown model seeded from the highest-Isp converged CEA case
-- Writes full raw-case CSV data and failed/unconverged cases
-- Generates organized SVG temperature-pair dashboards automatically
-- Reports NASA CEA outputs plus a minimal post-CEA nozzle sizing layer for target thrust, estimated sea-level thrust, mass flow, choked throat area, exit area, and circular-equivalent throat/exit diameters
+The refactor keeps the legacy CEA and blowdown logic in place for compatibility, but routes new analysis workflows through explicit interfaces instead of UI-coupled script calls.
 
-## Project Files
+## Current Scope
 
-- `main.py`: thin command-line entry point and compatibility facade
-- `ui_server.py`: thin browser UI launcher
-- `cea_hybrid/config.py`: JSON loading, sweep expansion, and validation
-- `cea_hybrid/variables.py`: documented output-variable and plot-metric selection
-- `cea_hybrid/calculations.py`: CEA case evaluation
-- `cea_hybrid/nozzle_sizing.py`: minimal target-thrust nozzle sizing derived from CEA outputs
-- `cea_hybrid/sweep.py`: multiprocessing sweep orchestration
-- `cea_hybrid/outputs.py`: CSV and SVG export helpers
-- `cea_hybrid/ui_backend.py`: UI payload shaping and request parsing
-- `cea_hybrid/server.py`: HTTP server and background sweep job state
-- `blowdown_hybrid/`: integrated transient blowdown model split into config, thermo, hydraulics, grain, solver, calculations, and UI response helpers
-- `ui/`: HTML, CSS, and JavaScript for the interactive interface
-- `inputs.json`: sweep definitions, output path, and model settings
-- `blowdown_model.py`: compatibility shim pointing to the integrated UI-backed blowdown workflow
-- `test.py`: small direct CEA sanity check
-- `outputs/`: generated CSV files after a run
-- `outputs/plots/temperature_pairs/`: one dashboard per fuel/oxidizer temperature pair
+Implemented now:
 
-## Requirements
+- separated CEA module callable from Python
+- reusable `run_0d_case()` workflow facade around the current 0D hybrid blowdown model
+- nominal metric extraction
+- constraint evaluation
+- one-at-a-time sensitivity analysis
+- named corner-case analysis
+- Step 2 first-pass geometry freeze
+- CSV/JSON/SVG exports
+- argparse-based `main.py` entry point
+
+Not implemented yet:
+
+- CFD
+- detailed injector geometry beyond the equivalent-orifice model
+- structural FEA
+- thermal FEA
+
+## Project Structure
+
+Top-level:
+
+- `main.py`: workflow CLI
+- `defaults.json`: single source of truth for all project default values for CEA and the blowdown/design workflow
+- `constants.json`: single source of truth for project constants and option metadata
+- `input/design_config.json`: optional design-workflow override file
+- `input/cea_config.json`: optional CEA override file
+- `src/`: new modular workflow package
+- `cea_hybrid/`: legacy CEA sweep implementation kept intact
+- `blowdown_hybrid/`: legacy 0D blowdown implementation kept intact
+- `ui/`, `ui_server.py`, `blowdown_ui.py`: existing browser UI path
+
+New workflow package:
+
+- `src/cea/`
+  - `cea_runner.py`: callable wrappers around the legacy CEA solver path
+  - `cea_parser.py`: dict-to-dataclass parsing
+  - `cea_interface.py`: public CEA API
+  - `cea_types.py`: typed CEA result objects
+- `src/simulation/`
+  - `solver_0d.py`: reusable `run_0d_case(config)` facade
+  - `case_runner.py`: nominal case orchestration
+  - `stop_conditions.py`: stop/status normalization
+- `src/analysis/`
+  - `metrics.py`: time-history reduction to design metrics
+  - `constraints.py`: constraint checking
+  - `sensitivity.py`: OAT sensitivity
+  - `corner_cases.py`: named corner-case runs
+  - `summaries.py`: CSV row shaping
+- `src/sizing/`
+  - `first_pass_sizing.py`: first-pass sizing helpers re-exported from the legacy blowdown path
+  - `geometry_init.py`: geometric initialization helpers
+  - `geometry_types.py`: frozen geometry dataclass
+  - `geometry_rules.py`: deterministic geometry rules and sanity checks
+  - `geometry_freeze.py`: Step 2 geometry-freeze orchestration
+- `src/post/`
+  - `csv_export.py`: CSV writers
+  - `geometry_export.py`: geometry JSON/CSV/text exports
+  - `plotting.py`: lightweight SVG plot generation without matplotlib
+  - `report_tables.py`: simple report-table helpers
+- `src/config_schema.py`: workflow defaults and config loading
+- `src/io_utils.py`, `src/units.py`, `src/constants.py`: shared utilities
+
+## Legacy Compatibility
+
+Kept intentionally:
+
+- `cea_hybrid/` remains the source of truth for the current CEA sweep behavior and CSV/SVG sweep exports
+- `blowdown_hybrid/` remains the source of truth for the current first-pass sizing and 0D blowdown physics
+- the browser UI path is untouched architecturally and still uses the legacy backend modules
+
+New data-source boundary:
+
+- hardcoded Python defaults were replaced with root-level `defaults.json`
+- hardcoded Python project constants were replaced with root-level `constants.json`
+- `input/*.json` are now optional override files instead of duplicate default snapshots
+
+One performance-focused internal change was made to the legacy blowdown layer:
+
+- `blowdown_hybrid/thermo.py` now caches saturated N2O property lookups by temperature
+
+That change preserves the existing equations and assumptions, but makes repeated nominal/OAT/corner runs practical.
+
+## Installation
+
+Requirements already used by the current project:
 
 - Python 3
-- Installed `cea` package
+- `cea`
 - `numpy`
 - `CoolProp`
 
-If you use the included virtual environment, activate it before running the script.
+The included virtual environment already contains the required packages on this machine.
 
-## Browser UI
+## CLI Usage
 
-Run the local UI server:
-
-```powershell
-python ui_server.py
-```
-
-Then open `http://127.0.0.1:8000` in a browser.
-
-The UI includes:
-
-- main input controls for target thrust, maximum nozzle exit diameter, target chamber pressure, and desired infill percentage
-- advanced controls for `O/F`, fuel temperature, oxidizer temperature, `Ae/At` cap mode, and optional custom `Ae/At` start/end/step sweep
-- blowdown-model controls for tank, feed, injector, grain, and transient simulation settings
-- interactive in-browser plots generated from raw sweep data after one CEA run
-- cached graph metric selection after the run, without recalculating CEA
-- automatic post-CEA blowdown execution from the highest-Isp case, with a manual rerun option
-- zoom, pan, legend toggle, legend highlight, chart expansion, and PNG graph download
-- downloadable CSV files for all converged cases and the highest-Isp case in the selected fixed conditions
-
-## Performance
-
-- `cpu_workers` in `inputs.json` controls sweep parallelism
-- Use `"auto"` to use all logical CPU threads
-- Use `1` to force single-process execution for debugging
-- GPU acceleration is not enabled: the current `cea` backend is CPU-bound and this project does not include CUDA or GPU kernels
-
-## Script Workflow
-
-1. Edit `inputs.json` to define the sweep ranges or explicit value lists.
-2. Set `target_thrust_n`, `max_exit_diameter_cm`, `pc_bar`, and the sweep inputs you want to study.
-3. Run the main script:
+Run the new workflow CLI:
 
 ```powershell
-python main.py
+python main.py --mode cea
+python main.py --mode nominal
+python main.py --mode oat
+python main.py --mode corners
+python main.py --mode freeze_geometry
 ```
 
-4. Review the generated CSV files in `outputs/`.
-5. Open the SVG files in `outputs/plots/temperature_pairs/` for raw heatmap dashboards by temperature pair.
+Supported arguments:
 
-## Input Format
-
-`inputs.json` supports either explicit lists or range objects for sweep values.
-
-Example list:
-
-```json
-"abs_volume_fractions": [0.05, 0.1, 0.15, 0.2]
+```powershell
+python main.py --mode cea --cea-config input/cea_config.json --output-dir output
+python main.py --mode nominal --config input/design_config.json --output-dir output
+python main.py --mode oat --config input/design_config.json --output-dir output
+python main.py --mode corners --config input/design_config.json --output-dir output
+python main.py --mode freeze_geometry --config input/design_config.json --cea-config input/cea_config.json --output-dir output
 ```
 
-Example range:
+Modes:
 
-```json
-"of": { "start": 2.0, "stop": 12.0, "count": 81 }
+- `--mode cea`
+  - runs the separated CEA sweep module
+  - if `--cea-config` is omitted, it uses the `cea` section from `defaults.json`
+  - writes outputs under `output/cea/`
+- `--mode nominal`
+  - runs one nominal 0D case
+  - if `--config` is omitted, it uses the `design_workflow` section from `defaults.json`
+  - writes outputs under `output/nominal/`
+- `--mode oat`
+  - runs one-at-a-time sensitivity cases around the nominal design
+  - writes outputs under `output/sensitivity/`
+- `--mode corners`
+  - runs configured named corner cases
+  - writes outputs under `output/corners/`
+- `--mode freeze_geometry`
+  - runs the nominal case plus Step 1 OAT and corner summaries
+  - requests a matching reference point from the separated CEA module
+  - freezes one baseline engine geometry for later workflow stages
+  - writes outputs under `output/geometry/`
+
+## CEA Module
+
+Public CEA entry points live in `src/cea/cea_interface.py`.
+
+Key interfaces:
+
+- `run_cea_case(cea_config) -> CEAPerformancePoint`
+- `run_cea_study(raw_config) -> CEASweepResult`
+- `get_cea_performance_point(result, selector="highest_isp")`
+- `load_cea_config(path)`
+
+Available downstream CEA fields include:
+
+- `cstar_mps`
+- `isp_s`
+- `isp_vac_s`
+- `cf`
+- `gamma_e`
+- `molecular_weight_exit`
+- `chamber_temperature_k`
+- `exit_pressure_bar`
+- `exit_temperature_k`
+- nozzle throat and exit areas
+
+The CEA module does not select chamber pressure. It evaluates thermochemistry at the specified conditions.
+
+## 0D Solver Interface
+
+Public 0D entry point:
+
+- `src/simulation/solver_0d.py`
+- `run_0d_case(config: dict) -> dict`
+
+The solver facade:
+
+- builds a seed performance point
+- maps the nominal study config into the current blowdown model inputs
+- runs the existing coupled tank/feed/injector/grain/nozzle closure
+- standardizes time histories and stop/status handling
+
+Returned histories include:
+
+- `t_s`
+- `tank_pressure_bar`
+- `tank_temperature_k`
+- `tank_quality`
+- `oxidizer_mass_remaining_kg`
+- `mdot_ox_kg_s`
+- `mdot_f_kg_s`
+- `of_ratio`
+- `pc_bar`
+- `thrust_n`
+- `port_radius_mm`
+- `grain_web_remaining_mm`
+
+## Step 1 Design Config
+
+`defaults.json` contains the full organized project defaults.
+
+`input/design_config.json` is now an optional override file layered on top of the `design_workflow` section from `defaults.json`.
+
+The design-workflow section is organized as:
+
+- `nominal`
+  - `performance`
+  - `blowdown`
+  - `loss_factors`
+- `uncertainty`
+- `constraints`
+- `geometry_policy`
+- `sensitivity_metrics`
+- `corner_cases`
+
+`geometry_policy` contains the explicit Step 2 freeze heuristics, including:
+
+- single-port baseline flag
+- prechamber/postchamber enable flags
+- grain-to-chamber radial clearance
+- injector-face margin factor
+- prechamber/postchamber length fractions
+- placeholder injector plate and chamber wall thicknesses
+- soft L* warning band
+- geometry checks tied back to Step 1 nominal and corner-case constraint status
+
+Currently supported uncertainty parameters:
+
+- `tank_temperature_k`
+- `fill_fraction`
+- `usable_ox_fraction`
+- `injector_cd`
+- `regression_a`
+- `regression_n`
+- `cstar_efficiency`
+- `cf_efficiency`
+- `usable_fuel_fraction`
+- `injector_dp_fraction`
+- `line_loss_multiplier`
+- `nozzle_discharge_factor`
+
+Supported uncertainty modes:
+
+- `percent`
+- `absolute`
+
+## Outputs
+
+Nominal mode writes:
+
+- `nominal_history.csv`
+- `nominal_metrics.csv`
+- `nominal_metrics.json`
+- `nominal_constraints.csv`
+- `nominal_constraints.json`
+- `pc_vs_time.svg`
+- `thrust_vs_time.svg`
+- `mass_flow_vs_time.svg`
+- `of_vs_time.svg`
+- `port_radius_vs_time.svg`
+- `tank_pressure_vs_time.svg`
+
+OAT mode writes:
+
+- `oat_cases.csv`
+- `ranking_<metric>.csv`
+- `ranking_<metric>.svg`
+- `nominal_metrics.json`
+
+Corner mode writes:
+
+- `corner_case_summary.csv`
+- `corner_case_summary.json`
+- `pc_overlay.svg`
+- `thrust_overlay.svg`
+- `of_overlay.svg`
+
+Geometry mode writes:
+
+- `baseline_geometry.json`
+- `baseline_geometry.csv`
+- `geometry_summary.txt`
+- `geometry_context.json`
+- `cea_reference_case.json` when the reference CEA point converges
+
+CEA mode writes:
+
+- legacy sweep CSVs and SVGs under `output/cea/`
+- `cea_config_used.json`
+- `highest_isp_case.json`
+
+## Automated Checks
+
+Current test coverage includes:
+
+- legacy first-pass sizing tests in `tests/test_blowdown_first_pass.py`
+- new Step 1 workflow smoke tests in `tests/test_step1_workflow.py`
+- Step 2 geometry-freeze smoke tests in `tests/test_geometry_freeze.py`
+
+Run:
+
+```powershell
+python -m unittest tests.test_blowdown_first_pass tests.test_step1_workflow tests.test_geometry_freeze
 ```
 
-Supported sweep keys:
+## Notes And TODOs
 
-- `ae_at`
-- `of`
-- `abs_volume_fractions`
-- `fuel_temperatures_k`
-- `oxidizer_temperatures_k`
+Current placeholders or intentionally simplified areas:
 
-By default, `sweeps.ae_at` starts at 1, uses step 1, and derives the candidate upper bound from `max_exit_diameter_cm` plus `target_thrust_n`. The generated candidate range starts just above 1 internally because the CEA supersonic area-ratio solver requires `Ae/At > 1`.
+- the Step 1 nominal config uses an explicit seed performance point instead of automatically pulling from a CEA case
+- the separated CEA module already supports extracting a highest-Isp point, but there is not yet a fully declarative config path that wires a selected CEA result into the Step 1 nominal JSON automatically
+- plots are written as lightweight SVGs because `matplotlib` is not installed in the current environment
+- the current 0D solver still uses the existing rigid, adiabatic, saturated two-phase nitrous assumptions and constant `c*` / `Cf` closure
+- the Step 2 geometry freeze is intentionally analytical: injector face, wall thickness, prechamber, and postchamber dimensions are configurable placeholders, not final CAD or FEA-backed dimensions
+- future Step 3 work should consume `baseline_geometry.json` directly and refine internal ballistics or submodels without replacing the current 0D orchestration layer
 
-Advanced `Ae/At` controls:
-
-- Set `ae_at_cap_mode` to `"exit_diameter"` to filter cases whose post-CEA circular-equivalent exit diameter exceeds `max_exit_diameter_cm`
-- Set `ae_at_cap_mode` to `"area_ratio"` to cap the sweep directly at `max_area_ratio`
-- Set `sweeps.ae_at.custom_enabled` to `true` to use explicit `start`, `stop`, and `step` values
-
-Plot settings:
-
-- `plots.enabled`: turn graph generation on or off
-- `plots.metric`: initial result field visualized in the heatmaps and raw UI chart; the browser UI can switch between all selectable graph metrics after one sweep
-- `plots.output_dir`: folder inside `outputs/` where the SVG files are written
-
-## Output Files
-
-After each run, the script writes:
-
-- `outputs/all_cases.csv`: every converged sweep point
-- `outputs/failures.csv`: failed or unconverged cases
-- `outputs/cases_abs_*.csv`: all converged cases split by ABS volume fraction
-- `outputs/plots/temperature_pairs/dashboard_*.svg`: one raw heatmap dashboard per fuel/oxidizer temperature pair
-
-## Notes
-
-- The ABS chemistry is modeled with a simplified styrene/butadiene surrogate.
-- Density values and mixture shares are first-pass engineering assumptions.
-- Throat area uses the CEA characteristic-velocity relation `At = mdot * c* / Pc`, so the reported design throat Mach is exactly 1.0.
-- Results depend on the species definitions available in the installed CEA database.
+Those are deliberate continuity choices, not silent physics changes.

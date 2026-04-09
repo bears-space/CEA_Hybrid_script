@@ -1,0 +1,55 @@
+"""Structured geometry objects for the Step 2 baseline freeze layer."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+
+@dataclass(frozen=True)
+class GeometryDefinition:
+    """Frozen first-pass engine geometry passed to later workflow stages."""
+
+    chamber_id_m: float
+    injector_face_diameter_m: float
+    prechamber_length_m: float
+    grain_length_m: float
+    port_radius_initial_m: float
+    grain_outer_radius_m: float
+    postchamber_length_m: float
+    throat_diameter_m: float
+    nozzle_exit_diameter_m: float
+    nozzle_area_ratio: float
+    injector_plate_thickness_m: float
+    chamber_wall_thickness_guess_m: float
+    total_chamber_length_m: float
+    free_volume_initial_m3: float
+    lstar_initial_m: float
+    single_port_baseline: bool
+    prechamber_enabled: bool
+    postchamber_enabled: bool
+    axial_showerhead_injector_baseline: bool
+    injector_discharges_to_prechamber: bool
+    port_count: int
+    radial_web_initial_m: float
+    chamber_cross_section_area_m2: float
+    injector_face_area_m2: float
+    throat_area_m2: float
+    nozzle_exit_area_m2: float
+    injector_equivalent_area_m2: float
+    nominal_pc_bar: float | None = None
+    nominal_thrust_avg_n: float | None = None
+    nominal_constraint_pass: bool | None = None
+    corner_cases_all_pass: bool | None = None
+    sensitivity_driver_metric: str | None = None
+    sensitivity_top_parameter: str | None = None
+    cea_reference: dict[str, Any] | None = None
+    source_summary: dict[str, Any] = field(default_factory=dict)
+    geometry_valid: bool = True
+    checks: dict[str, dict[str, Any]] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+

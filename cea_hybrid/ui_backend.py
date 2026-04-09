@@ -1,17 +1,11 @@
 """UI-facing payload builders for CEA-only sweep results."""
 
-import json
-
 from blowdown_hybrid.ui_backend import build_default_ui_config as build_default_blowdown_ui_config
 from cea_hybrid.config import build_config, ensure_finite
-from cea_hybrid.constants import (
-    CASE_FIELDS,
-    INPUTS_PATH,
-    METRIC_OPTIONS,
-    ROOM_TEMPERATURE_K,
-)
+from cea_hybrid.defaults import get_default_raw_config
 from cea_hybrid.labels import metric_label
 from cea_hybrid.nozzle_sizing import CAP_MODE_AREA_RATIO, CAP_MODE_EXIT_DIAMETER
+from cea_hybrid.variables import CASE_FIELDS, METRIC_OPTIONS
 
 
 def _expand_raw_range(spec):
@@ -51,24 +45,25 @@ def detect_range(values):
 
 
 def load_base_raw_config():
-    return json.loads(INPUTS_PATH.read_text(encoding="utf-8"))
+    return get_default_raw_config()
 
 
 def build_default_ui_config(default_cpu_workers):
     raw = load_base_raw_config()
     raw_metric = raw.get("plots", {}).get("metric", raw.get("summary_metric", "isp_vac_s"))
     selected_metric = raw_metric if raw_metric in METRIC_OPTIONS else "isp_vac_s"
+    reference_temperature_k = float(raw["blowdown"]["tank"]["initial_temp_k"])
     temperature_options = sorted(
         {
             *[float(value) for value in raw["sweeps"]["fuel_temperatures_k"]],
             *[float(value) for value in raw["sweeps"]["oxidizer_temperatures_k"]],
-            ROOM_TEMPERATURE_K,
+            reference_temperature_k,
         }
     )
 
     default_temperature_k = min(
         temperature_options,
-        key=lambda value: abs(value - ROOM_TEMPERATURE_K),
+        key=lambda value: abs(value - reference_temperature_k),
     )
 
     return {

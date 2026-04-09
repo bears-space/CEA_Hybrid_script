@@ -19,7 +19,7 @@ const BLOWDOWN_FORMULA_HINTS = {
   seed_isp_s: "From the latest highest-Isp CEA case specific impulse.",
   seed_of_ratio: "From the latest highest-Isp CEA case O/F ratio.",
   seed_pc_bar: "From the latest highest-Isp CEA case chamber pressure.",
-  seed_oxidizer_temp_k: "From the latest highest-Isp CEA case oxidizer temperature.",
+  seed_oxidizer_temp_k: "From the latest highest-Isp CEA case oxidizer temperature. The blowdown tank temperature follows the main oxidizer temperature input.",
   seed_fuel_temp_k: "From the latest highest-Isp CEA case fuel temperature.",
   seed_abs_volume_fraction: "From the latest highest-Isp CEA case ABS volume fraction.",
   seed_abs_mass_fraction: "ABS mass fraction = (phi_abs * rho_abs) / (phi_abs * rho_abs + (1 - phi_abs) * rho_paraffin).",
@@ -33,13 +33,27 @@ const BLOWDOWN_FORMULA_HINTS = {
   fuel_density_kg_m3: "rho_fuel = 1 / (phi_abs / rho_abs + (1 - phi_abs) / rho_paraffin).",
   tank_oxidizer_liquid_volume_l: "V_ox_liquid = m_ox_loaded / rho_ox_liq(T_ox).",
   tank_volume_l: "V_tank = m_ox_loaded / (rho_ox_liq(T_ox) * initial_fill_fraction).",
-  tank_initial_mass_kg: "Uses the loaded oxidizer mass unless a manual tank override is active.",
+  tank_initial_mass_kg: "Loaded oxidizer mass from burn time, O/F, Isp, and usable oxidizer fraction unless a manual tank override is active.",
+  tank_initial_temp_k: "Uses the main oxidizer temperature input. Saturated N2O pressure and liquid density are evaluated at this temperature.",
+  tank_initial_pressure_bar: "p_tank,0 = p_sat_n2o(T_ox).",
+  tank_usable_fraction_source: "Basic mode uses a project-default usable oxidizer fraction. Advanced mode uses the expert-entered value.",
+  regression_preset: "Basic mode selects a project regression preset. Custom uses the advanced a and n values.",
+  regression_a_si: "Regression coefficient used by the first-pass grain estimate. In basic mode this usually comes from the selected preset.",
+  regression_n: "Regression exponent used by the first-pass grain estimate. In basic mode this usually comes from the selected preset.",
+  regression_source: "Shows whether regression coefficients came from a preset or from advanced manual inputs.",
+  port_count: "Port count used by the first-pass grain estimate. Basic mode uses a project default unless advanced mode is active.",
+  port_count_source: "Shows whether port count came from the basic project default or advanced manual input.",
   initial_port_area_mm2: "A_port,0 = mdot_ox / target_initial_gox.",
   initial_port_radius_mm: "R_port,0 = 0.5 * sqrt(4 * mdot_ox / (pi * N_ports * Gox_0)).",
   initial_regression_rate_mm_s: "rdot_0 = a * Gox_0^n.",
   grain_length_m: "Lg = mdot_f / (rho_f * N_ports * pi * D_port,0 * rdot_0).",
   grain_outer_radius_mm: "R_outer = sqrt(R_port,0^2 + V_fuel / (N_ports * pi * Lg)).",
+  fuel_usable_fraction_source: "Basic mode uses a project-default fuel usable fraction. Advanced mode uses the expert-entered value.",
+  injector_pressure_drop_policy: "Basic mode uses a simple project pressure-drop policy that maps to a fraction of chamber pressure.",
   injector_delta_p_bar: "Either explicit injector delta-p or injector_delta_p_fraction_of_pc * Pc.",
+  injector_delta_p_source: "Shows whether injector delta-p came from the simple policy or from advanced manual settings.",
+  injector_cd_source: "Basic mode uses a project-default injector Cd. Advanced mode uses the expert-entered value.",
+  injector_hole_count_source: "Basic mode uses a project-default injector hole count. Advanced mode uses the expert-entered value.",
   injector_total_area_mm2: "A_inj = mdot_ox / (Cd * sqrt(2 * rho_ox_liq(T_ox) * dP_inj)).",
   injector_area_per_hole_mm2: "Injector total area divided evenly by hole count.",
   injector_hole_diameter_mm: "Equivalent hole diameter = sqrt(4 * A_inj_total / (pi * N_holes)).",
@@ -48,6 +62,104 @@ const BLOWDOWN_FORMULA_HINTS = {
   initial_port_source: "Shows whether initial port radius is auto-derived or manually overridden.",
   grain_length_source: "Shows whether grain length is auto-derived or manually overridden.",
   outer_radius_source: "Shows whether outer grain radius is auto-derived or manually overridden.",
+};
+
+const INPUT_FIELD_HINTS = {
+  target_thrust_n: "Requested thrust used for post-CEA nozzle sizing and blowdown first-pass sizing.",
+  max_exit_diameter_cm: "Maximum allowed nozzle exit diameter when the sweep is capped by exit size.",
+  pc_bar: "Chamber pressure passed directly into the NASA CEA rocket calculation.",
+  desired_infill_percent: "ABS infill percentage mapped into the ABS volume-fraction input for the propellant model.",
+  ae_at_cap_mode: "Chooses whether the Ae/At sweep stops at an exit-diameter limit or a direct area-ratio limit.",
+  max_area_ratio: "Maximum nozzle expansion ratio allowed when cap mode is set to area ratio.",
+  ae_at_custom_enabled: "Enables a manually defined Ae/At sweep instead of the default start, stop, and step behavior.",
+  ae_at_start: "First Ae/At value included in the custom area-ratio sweep.",
+  ae_at_stop: "Last Ae/At value included in the custom area-ratio sweep.",
+  ae_at_step: "Increment between consecutive Ae/At samples in the custom sweep.",
+  of_start: "Lowest oxidizer-to-fuel mass ratio evaluated in the sweep.",
+  of_stop: "Highest oxidizer-to-fuel mass ratio evaluated in the sweep.",
+  of_count: "Number of O/F sample points generated between the start and stop values.",
+  fuel_temperature_k: "Fuel temperature supplied to CEA for the paraffin and ABS mixture.",
+  oxidizer_temperature_k: "Oxidizer temperature supplied to CEA and reused as the blowdown tank temperature basis.",
+  blowdown_tank_usable_oxidizer_fraction: "Fraction of loaded oxidizer assumed usable before the run is considered depleted.",
+  blowdown_grain_fuel_usable_fraction: "Fraction of loaded fuel assumed available for the first-pass grain estimate.",
+  blowdown_grain_a_reg_si: "Empirical regression coefficient used in the initial hybrid regression-rate estimate.",
+  blowdown_grain_n_reg: "Empirical regression exponent used with oxidizer mass flux in the first-pass estimate.",
+  blowdown_grain_port_count: "Number of fuel ports assumed in the preliminary grain geometry estimate.",
+  blowdown_injector_cd: "Injector discharge coefficient used to convert required flow into injector area.",
+  blowdown_injector_hole_count: "Number of injector holes used to split total injector area into per-hole size.",
+  blowdown_injector_delta_p_mode: "Defines injector sizing pressure drop as either an explicit value or a fraction of chamber pressure.",
+  blowdown_injector_delta_p_pa: "Explicit injector pressure-drop target used when delta-p mode is set to explicit.",
+  blowdown_injector_delta_p_fraction_of_pc: "Injector pressure-drop fraction multiplied by chamber pressure when using fraction mode.",
+  blowdown_tank_volume_l: "Manual oxidizer tank volume override for the preliminary blowdown model.",
+  blowdown_tank_initial_mass_kg: "Manual initial oxidizer mass override for the preliminary blowdown model.",
+  blowdown_tank_override_mass_volume: "When enabled, the solver uses the manually entered tank mass and volume instead of auto-derived values.",
+  blowdown_injector_total_area_mm2: "Manual total injector flow area override used instead of the first-pass estimate.",
+  blowdown_injector_override_total_area: "When enabled, the solver uses the manual injector total area.",
+  blowdown_grain_initial_port_radius_mm: "Manual initial port radius override for the grain geometry.",
+  blowdown_grain_length_m: "Manual grain length override for the fuel geometry.",
+  blowdown_grain_outer_radius_mm: "Manual outer grain radius override for the fuel geometry.",
+  blowdown_grain_override_initial_port_radius: "When enabled, the solver uses the manual initial port radius.",
+  blowdown_grain_override_grain_length: "When enabled, the solver uses the manual grain length.",
+  blowdown_grain_override_outer_radius: "When enabled, the solver uses the manual outer grain radius.",
+  blowdown_feed_line_id_mm: "Equivalent feed-line inner diameter used for lumped line-loss calculations.",
+  blowdown_feed_line_length_m: "Equivalent feed-line length used for transient pressure-loss calculations.",
+  blowdown_feed_friction_factor: "Lumped Darcy friction factor used across the equivalent feed line.",
+  blowdown_feed_minor_loss_k_total: "Total minor-loss coefficient representing valves, bends, and fittings in the feed path.",
+  blowdown_sim_dt_s: "Time step used by the transient blowdown integrator.",
+  blowdown_sim_ambient_pressure_bar: "Ambient pressure used to estimate delivered thrust from the transient chamber state.",
+  blowdown_sim_max_inner_iterations: "Maximum solver iterations allowed per time step before moving on or failing convergence.",
+  blowdown_sim_relaxation: "Relaxation factor applied to stabilize the transient inner iteration updates.",
+  blowdown_sim_relative_tolerance: "Relative convergence tolerance used inside each blowdown time step.",
+  blowdown_sim_stop_quality: "Tank vapor-quality cutoff used as an end condition for the blowdown run.",
+  blowdown_ui_mode: "Switches between basic high-level sizing and advanced manual override controls.",
+  blowdown_auto_run_after_cea: "Automatically starts the preliminary blowdown run after a CEA sweep completes.",
+  blowdown_sim_burn_time_s: "Requested burn duration used to size required oxidizer and fuel loading.",
+  blowdown_tank_initial_fill_fraction: "Initial liquid fill fraction assumed for the oxidizer tank sizing estimate.",
+  blowdown_grain_target_initial_gox_kg_m2_s: "Target initial oxidizer mass flux used to back out the starting port area.",
+  blowdown_injector_pressure_drop_policy: "Basic-mode policy that selects a project-default injector pressure-drop level.",
+  blowdown_grain_regression_preset: "Selects the baseline fuel/regression model preset used in basic mode.",
+  selected_metric: "Chooses which preloaded sweep metric is shown in the main O/F chart without rerunning CEA.",
+};
+
+const CASE_FIELD_HINTS = {
+  target_thrust_n: "Target engine thrust for the selected case. The workflow uses it to back out the required total mass flow and then size the throat and first-pass propellant loading around that demand.",
+  pc_bar: "Chamber pressure for the selected case. In this project it is a chosen system-level design input that is passed into CEA and then reused by the sizing logic; it is not automatically optimized by CEA.",
+  abs_vol_frac: "ABS structural fraction expressed as a volume fraction within the paraffin-based fuel grain model. This changes the effective fuel density and the surrogate chemistry passed into CEA.",
+  fuel_temp_k: "Fuel-side reactant temperature used in the CEA evaluation for this case. It influences the thermochemical state and is separate from the oxidizer tank temperature input.",
+  oxidizer_temp_k: "Oxidizer-side reactant temperature used in CEA. In the coupled workflow this also serves as the basis for the preliminary blowdown tank temperature when the 0D model is seeded from CEA.",
+  of: "Oxidizer-to-fuel mass ratio for the case. It sets how the total propellant flow is split between oxidizer and fuel and strongly affects c*, Isp, flame temperature, and the first-pass grain sizing.",
+  ae_at: "Nozzle expansion ratio, equal to exit area divided by throat area. Larger values generally increase vacuum performance but also increase exit diameter and can over-expand at sea level.",
+  isp_s: "Specific impulse in seconds for the selected CEA rocket solution at the reported operating condition. This is the thrust-normalized performance number used directly in the first-pass mass-flow sizing.",
+  isp_vac_s: "Vacuum specific impulse in seconds for the same case. It shows the idealized performance if the nozzle expanded into vacuum instead of sea-level ambient conditions.",
+  cf: "Thrust coefficient from the CEA rocket solution. It converts chamber pressure and throat area into thrust and captures the nozzle expansion contribution separately from c*.",
+  cstar_mps: "Characteristic velocity predicted by CEA in meters per second. This is the combustion-performance term used in the project’s chamber-pressure closure and throat sizing logic.",
+  tc_k: "Predicted chamber temperature from the equilibrium CEA solution. This is a useful first-pass indicator for thermal loading and gas-property trends.",
+  mach_t: "Mach number at the throat station from the CEA nozzle solution. For a healthy choked nozzle this should be near unity.",
+  pe_bar: "Predicted nozzle exit static pressure. Comparing this with ambient pressure helps judge under-expansion or over-expansion for the chosen area ratio.",
+  te_k: "Predicted nozzle exit static temperature from CEA. It is lower than chamber temperature because the flow expands through the nozzle.",
+  mach_e: "Predicted nozzle exit Mach number. Higher values indicate stronger expansion through the nozzle.",
+  gamma_e: "Ratio of specific heats at the nozzle exit. This is one of the gas-property outputs later useful for higher-fidelity nozzle or internal-ballistics work.",
+  mw_e: "Effective molecular weight of the exhaust at the nozzle exit. Lower molecular weight generally supports higher exhaust velocity and Isp.",
+  isp_mps: "Specific impulse converted into effective exhaust velocity in meters per second. It is the same performance quantity as Isp, just expressed in velocity form.",
+  isp_vac_mps: "Vacuum specific impulse converted into effective exhaust velocity in meters per second.",
+  abs_mass_frac: "ABS structural fraction expressed as a mass fraction after converting from the chosen volume fraction and component densities.",
+  mdot_total_kg_s: "Total propellant mass flow required to hit the target thrust at the reported Isp. This is the combined oxidizer-plus-fuel flow through the engine.",
+  at_m2: "Required nozzle throat area for the selected mass flow, chamber pressure, and c*. This is the choked-flow sizing quantity used to freeze the throat dimension.",
+  ae_m2: "Nozzle exit area implied by the throat area and the selected expansion ratio Ae/At.",
+  thrust_sl_n: "Estimated delivered thrust at standard sea-level ambient pressure for this case after applying the current nozzle sizing assumptions.",
+  dt_mm: "Circular-equivalent throat diameter computed from the throat area. This is the first-pass geometric throat dimension rather than a detailed contour.",
+  de_mm: "Circular-equivalent nozzle exit diameter computed from the exit area.",
+  de_cm: "Same nozzle exit diameter as above, reported in centimeters for quick comparison against packaging limits.",
+  exit_diameter_margin_cm: "Margin between the configured maximum exit diameter and the current case’s nozzle exit diameter. Positive values mean the case still fits inside the limit.",
+  exit_diameter_within_limit: "Boolean packaging check showing whether the current nozzle exit diameter stays within the configured exit-diameter cap.",
+};
+
+const STATIC_LABEL_HINTS = {
+  "Regression Preset": "This label explains how the selected regression preset supplies the baseline regression coefficients used by the first-pass hybrid grain estimate. If you switch the preset to Custom, the advanced a and n inputs become the active source instead.",
+  "Injector Policy": "This label explains that the basic-mode injector policy is the high-level control for preliminary injector pressure-drop sizing. In advanced mode you can replace that shortcut with explicit injector delta-p settings.",
+  "Tank State Basis": "This label explains that oxidizer tank temperature sets the saturated nitrous starting state, including initial tank pressure and liquid density. Manual tank mass or volume overrides do not change that thermodynamic basis.",
+  "CEA Seed": "This label explains which values are inherited from the currently selected highest-Isp converged CEA case when the preliminary blowdown model is seeded automatically.",
+  "Hidden Basic Defaults": "This label groups lower-level parameters that remain on project defaults while the UI is in basic mode. They still affect the first-pass sizing, but they are intentionally hidden until advanced mode is enabled.",
 };
 
 function $(id) {
@@ -120,12 +232,119 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function prettyBlowdownString(key, value) {
+  const mappings = {
+    regression_preset: {
+      project_default_paraffin_abs: "Paraffin + ABS baseline (Project Default)",
+      custom: "Custom",
+    },
+    injector_pressure_drop_policy: {
+      low: "Low",
+      nominal: "Nominal",
+      conservative: "Conservative",
+    },
+    injector_delta_p_mode: {
+      explicit: "Explicit",
+      fraction_of_pc: "Fraction of Pc",
+      policy_fraction_of_pc: "Policy fraction of Pc",
+    },
+  };
+  if (mappings[key]?.[value]) {
+    return mappings[key][value];
+  }
+  if (key.endsWith("_source")) {
+    return String(value).replaceAll("_", " ");
+  }
+  return value;
+}
+
 function infoDot(text, label = "More information") {
   return `<button class="info-dot" type="button" data-tip="${escapeHtml(text)}" aria-label="${escapeHtml(label)}">i</button>`;
 }
 
 function labelWithTip(label, tipText, labelText) {
   return `${escapeHtml(label)} ${infoDot(tipText, labelText || `Explain ${label}`)}`;
+}
+
+function humanizeFieldKey(key) {
+  return String(key || "")
+    .replaceAll("_", " ")
+    .replace(/\bkg\b/g, "kg")
+    .replace(/\bm2\b/g, "m^2")
+    .replace(/\bmm2\b/g, "mm^2")
+    .replace(/\bsi\b/g, "SI")
+    .replace(/\bpc\b/gi, "chamber pressure")
+    .trim();
+}
+
+function genericFieldHint(key, label = "") {
+  const name = label.replace(/\s+/g, " ").trim() || humanizeFieldKey(key);
+  return `This value reports ${name.toLowerCase()} for the current case. It is exposed by the active CEA or blowdown workflow output and is shown here for inspection and comparison, not as a manually entered design input.`;
+}
+
+function hintForCaseField(key, label = "") {
+  return BLOWDOWN_FORMULA_HINTS[key] || CASE_FIELD_HINTS[key] || genericFieldHint(key, label);
+}
+
+function tooltipTextForInput(id, labelText = "") {
+  const cleanLabel = labelText.replace(/\s+/g, " ").trim();
+  if (INPUT_FIELD_HINTS[id]) {
+    return `This input controls ${cleanLabel.toLowerCase()} for the current analysis. ${INPUT_FIELD_HINTS[id]}`;
+  }
+  if (!cleanLabel) {
+    return "";
+  }
+  return `This input controls ${cleanLabel.toLowerCase()} for the current analysis. Change it here to alter the next CEA sweep or preliminary blowdown run.`;
+}
+
+function applyHoverHint(node, hintText) {
+  if (!node || !hintText) {
+    return;
+  }
+  node.classList.add("hover-hint");
+  node.setAttribute("title", hintText);
+  node.dataset.tip = hintText;
+}
+
+function hoverHintTarget(labelNode) {
+  if (!labelNode?.querySelector(".info-dot")) {
+    return labelNode;
+  }
+  let textSpan = labelNode.querySelector(".field-label-text");
+  if (textSpan) {
+    return textSpan;
+  }
+  textSpan = document.createElement("span");
+  textSpan.className = "field-label-text";
+  while (labelNode.firstChild && !labelNode.firstChild.classList?.contains?.("info-dot")) {
+    textSpan.appendChild(labelNode.firstChild);
+  }
+  labelNode.insertBefore(textSpan, labelNode.querySelector(".info-dot"));
+  return textSpan;
+}
+
+function attachFieldLabelTooltips() {
+  document.querySelectorAll(".field").forEach((field) => {
+    const labelNode = field.querySelector(".field-label");
+    if (!labelNode) {
+      return;
+    }
+    const control = field.querySelector("input, select, textarea");
+    const labelText = labelNode.textContent || "";
+    const hintText = control?.id
+      ? tooltipTextForInput(control.id, labelText)
+      : STATIC_LABEL_HINTS[labelText.replace(/\s+/g, " ").trim()] || "";
+    applyHoverHint(hoverHintTarget(labelNode), hintText);
+  });
+
+  document.querySelectorAll(".checkbox-field").forEach((field) => {
+    const control = field.querySelector("input");
+    const labelNode = [...field.querySelectorAll("span")].find((node) => !node.classList.contains("field-label"));
+    if (!control || !labelNode) {
+      return;
+    }
+    applyHoverHint(labelNode, tooltipTextForInput(control.id, labelNode.textContent || ""));
+  });
 }
 
 function getMetricOptions() {
@@ -147,6 +366,39 @@ function safeFileName(value) {
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "") || "chart";
+}
+
+function decimalPlacesForStep(stepValue, fallback = 6) {
+  const step = Math.abs(Number(stepValue));
+  if (!Number.isFinite(step) || step === 0) {
+    return fallback;
+  }
+  for (let digits = 0; digits <= 8; digits += 1) {
+    if (Math.abs(step - Number(step.toFixed(digits))) < 1e-9) {
+      return digits;
+    }
+  }
+  return 8;
+}
+
+function normalizeSweepValue(value, digits) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Number.NaN;
+  }
+  const factor = 10 ** Math.max(0, digits);
+  return Math.round((numeric + Number.EPSILON) * factor) / factor;
+}
+
+function formatSweepValue(value, digits) {
+  const normalized = normalizeSweepValue(value, digits);
+  if (!Number.isFinite(normalized)) {
+    return "-";
+  }
+  return normalized.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: Math.max(0, digits),
+  });
 }
 
 function applyTheme(theme) {
@@ -224,14 +476,18 @@ sizing: mdot_total_kg_s, at_m2, ae_m2, thrust_sl_n, dt_mm, de_mm, de_cm</div>
           <h3>3. Blowdown first-pass sizing</h3>
           <p>
             The preliminary 0D blowdown setup now includes optional helper relations from the project sizing notes so fewer manual inputs are required.
-            When those modes are enabled, the backend derives tank, grain, and blend inputs from the seeded highest-Isp CEA case and the requested burn time.
+            In basic mode, the main oxidizer temperature input also sets the oxidizer tank state, and the backend derives required oxidizer mass, loaded oxidizer mass,
+            liquid oxidizer volume, tank volume, and initial tank pressure from the requested burn time and fill policy.
           </p>
           <div class="calc-equation">mdot_total = F / (g0 * Isp)
 mdot_ox = (O/F) / (1 + O/F) * mdot_total
 mdot_f = mdot_total / (1 + O/F)
 m_required = mdot * t_b
 m_loaded = m_required / usable_fraction</div>
-          <div class="calc-equation">V_tank = m_ox_loaded / (rho_ox_liq * fill_fraction)
+          <div class="calc-equation">p_tank,0 = p_sat_n2o(T_ox)
+rho_ox_liq = rho_liquid_n2o(T_ox)
+V_ox_liquid = m_ox_loaded / rho_ox_liq
+V_tank = V_ox_liquid / fill_fraction
 rho_blend = 1 / (phi_abs/rho_abs + (1-phi_abs)/rho_paraffin)</div>
           <div class="calc-equation">r_port,0 = sqrt(mdot_ox / (pi * N_ports * Gox_0))
 rdot_0 = a * Gox_0^n
@@ -339,6 +595,18 @@ function closeModal() {
   $("chartModalBody").innerHTML = "";
 }
 
+function isBlowdownAdvancedMode() {
+  return $("blowdown_ui_mode").value === "advanced";
+}
+
+function activeRegressionPreset() {
+  return $("blowdown_grain_regression_preset").value;
+}
+
+function activeInjectorPressureDropPolicy() {
+  return $("blowdown_injector_pressure_drop_policy").value;
+}
+
 function populateForm(defaults) {
   $("target_thrust_n").value = defaults.target_thrust_n;
   $("max_exit_diameter_cm").value = defaults.max_exit_diameter_cm;
@@ -375,7 +643,6 @@ function populateForm(defaults) {
   $("blowdown_ui_mode").value = blowdown.ui_mode;
   $("blowdown_tank_volume_l").value = blowdown.tank.volume_l;
   $("blowdown_tank_initial_mass_kg").value = blowdown.tank.initial_mass_kg;
-  $("blowdown_tank_initial_temp_k").value = blowdown.tank.initial_temp_k;
   $("blowdown_tank_usable_oxidizer_fraction").value = blowdown.tank.usable_oxidizer_fraction;
   $("blowdown_tank_initial_fill_fraction").value = blowdown.tank.initial_fill_fraction;
   $("blowdown_tank_override_mass_volume").checked = blowdown.tank.override_mass_volume;
@@ -387,9 +654,11 @@ function populateForm(defaults) {
   $("blowdown_injector_hole_count").value = blowdown.injector.hole_count;
   $("blowdown_injector_total_area_mm2").value = blowdown.injector.total_area_mm2;
   $("blowdown_injector_override_total_area").checked = blowdown.injector.override_total_area;
+  $("blowdown_injector_pressure_drop_policy").value = blowdown.injector.pressure_drop_policy;
   $("blowdown_injector_delta_p_mode").value = blowdown.injector.delta_p_mode;
   $("blowdown_injector_delta_p_pa").value = blowdown.injector.delta_p_pa / 1e5;
   $("blowdown_injector_delta_p_fraction_of_pc").value = blowdown.injector.delta_p_fraction_of_pc;
+  $("blowdown_grain_regression_preset").value = blowdown.grain.regression_preset;
   $("blowdown_grain_a_reg_si").value = blowdown.grain.a_reg_si;
   $("blowdown_grain_n_reg").value = blowdown.grain.n_reg;
   $("blowdown_grain_port_count").value = blowdown.grain.port_count;
@@ -417,7 +686,7 @@ function updateAdvancedControls() {
   const capMode = $("ae_at_cap_mode").value;
   $("max_exit_diameter_cm").disabled = capMode !== "exit_diameter";
   $("max_area_ratio").disabled = capMode !== "area_ratio";
-  const isAdvanced = $("blowdown_ui_mode").value === "advanced";
+  const isAdvanced = isBlowdownAdvancedMode();
   $("blowdownAdvancedControls").classList.toggle("hidden", !isAdvanced);
   $("blowdownFeedSection").classList.toggle("hidden", !isAdvanced);
   $("blowdownSolverSection").classList.toggle("hidden", !isAdvanced);
@@ -428,27 +697,53 @@ function updateAdvancedControls() {
   const outerOverride = isAdvanced && $("blowdown_grain_override_outer_radius").checked;
   $("blowdown_tank_volume_l").disabled = !tankOverride;
   $("blowdown_tank_initial_mass_kg").disabled = !tankOverride;
-  $("blowdown_tank_initial_temp_k").disabled = !isAdvanced;
   $("blowdown_injector_total_area_mm2").disabled = !injectorOverride;
   $("blowdown_grain_initial_port_radius_mm").disabled = !portOverride;
   $("blowdown_grain_length_m").disabled = !lengthOverride;
   $("blowdown_grain_outer_radius_mm").disabled = !outerOverride;
+  $("blowdown_tank_usable_oxidizer_fraction").disabled = !isAdvanced;
+  $("blowdown_grain_fuel_usable_fraction").disabled = !isAdvanced;
+  $("blowdown_grain_port_count").disabled = !isAdvanced;
+  $("blowdown_injector_cd").disabled = !isAdvanced;
+  $("blowdown_injector_hole_count").disabled = !isAdvanced;
+  const regressionPreset = activeRegressionPreset();
+  const customRegression = isAdvanced && regressionPreset === "custom";
+  $("blowdown_grain_a_reg_si").disabled = !customRegression;
+  $("blowdown_grain_n_reg").disabled = !customRegression;
   const explicitDeltaP = $("blowdown_injector_delta_p_mode").value === "explicit";
-  $("blowdown_injector_delta_p_pa").disabled = !explicitDeltaP;
-  $("blowdown_injector_delta_p_fraction_of_pc").disabled = explicitDeltaP;
+  $("blowdown_injector_delta_p_mode").disabled = !isAdvanced;
+  $("blowdown_injector_delta_p_pa").disabled = !isAdvanced || !explicitDeltaP;
+  $("blowdown_injector_delta_p_fraction_of_pc").disabled = !isAdvanced || explicitDeltaP;
   updateBlowdownButtonState(false);
 }
 
 function buildBlowdownPayload() {
+  const isAdvanced = isBlowdownAdvancedMode();
+  const defaults = state.defaults?.blowdown || {};
+  const tankDefaults = defaults.tank || {};
+  const injectorDefaults = defaults.injector || {};
+  const grainDefaults = defaults.grain || {};
+  const regressionPreset = activeRegressionPreset();
+  const customRegression = regressionPreset === "custom";
+  const injectorPressureDropPolicy = activeInjectorPressureDropPolicy();
+  const oxidizerTemperatureK = parseNumericInput("oxidizer_temperature_k", "Oxidizer temperature");
+
   return {
     auto_run_after_cea: $("blowdown_auto_run_after_cea").checked,
+    oxidizer_temperature_k: oxidizerTemperatureK,
     ui_mode: $("blowdown_ui_mode").value,
     seed_case: "highest_isp",
     tank: {
-      volume_l: parseNumericInput("blowdown_tank_volume_l", "Blowdown tank volume"),
-      initial_mass_kg: parseNumericInput("blowdown_tank_initial_mass_kg", "Blowdown initial tank mass"),
-      initial_temp_k: parseNumericInput("blowdown_tank_initial_temp_k", "Blowdown initial tank temperature"),
-      usable_oxidizer_fraction: parseNumericInput("blowdown_tank_usable_oxidizer_fraction", "Blowdown usable oxidizer fraction"),
+      volume_l: isAdvanced
+        ? parseNumericInput("blowdown_tank_volume_l", "Blowdown tank volume")
+        : Number(tankDefaults.volume_l ?? 28.0),
+      initial_mass_kg: isAdvanced
+        ? parseNumericInput("blowdown_tank_initial_mass_kg", "Blowdown initial tank mass")
+        : Number(tankDefaults.initial_mass_kg ?? 18.0),
+      initial_temp_k: oxidizerTemperatureK,
+      usable_oxidizer_fraction: isAdvanced
+        ? parseNumericInput("blowdown_tank_usable_oxidizer_fraction", "Blowdown usable oxidizer fraction")
+        : Number(tankDefaults.usable_oxidizer_fraction ?? 0.95),
       initial_fill_fraction: parseNumericInput("blowdown_tank_initial_fill_fraction", "Blowdown initial fill fraction"),
       override_mass_volume: $("blowdown_tank_override_mass_volume").checked,
     },
@@ -459,25 +754,51 @@ function buildBlowdownPayload() {
       minor_loss_k_total: parseNumericInput("blowdown_feed_minor_loss_k_total", "Blowdown feed minor loss K"),
     },
     injector: {
-      cd: parseNumericInput("blowdown_injector_cd", "Blowdown injector Cd"),
-      hole_count: parseNumericInput("blowdown_injector_hole_count", "Blowdown injector hole count", { integer: true }),
-      total_area_mm2: parseNumericInput("blowdown_injector_total_area_mm2", "Blowdown injector total area"),
+      cd: isAdvanced
+        ? parseNumericInput("blowdown_injector_cd", "Blowdown injector Cd")
+        : Number(injectorDefaults.cd ?? 0.8),
+      hole_count: isAdvanced
+        ? parseNumericInput("blowdown_injector_hole_count", "Blowdown injector hole count", { integer: true })
+        : Number(injectorDefaults.hole_count ?? 24),
+      total_area_mm2: isAdvanced
+        ? parseNumericInput("blowdown_injector_total_area_mm2", "Blowdown injector total area")
+        : Number(injectorDefaults.total_area_mm2 ?? 75.0),
       override_total_area: $("blowdown_injector_override_total_area").checked,
-      delta_p_mode: $("blowdown_injector_delta_p_mode").value,
-      delta_p_pa: parseNumericInput("blowdown_injector_delta_p_pa", "Blowdown injector delta-p") * 1e5,
-      delta_p_fraction_of_pc: parseNumericInput("blowdown_injector_delta_p_fraction_of_pc", "Blowdown injector delta-p fraction of chamber pressure"),
+      pressure_drop_policy: injectorPressureDropPolicy,
+      delta_p_mode: isAdvanced ? $("blowdown_injector_delta_p_mode").value : (injectorDefaults.delta_p_mode || "fraction_of_pc"),
+      delta_p_pa: isAdvanced
+        ? parseNumericInput("blowdown_injector_delta_p_pa", "Blowdown injector delta-p") * 1e5
+        : Number(injectorDefaults.delta_p_pa ?? 600000.0),
+      delta_p_fraction_of_pc: isAdvanced
+        ? parseNumericInput("blowdown_injector_delta_p_fraction_of_pc", "Blowdown injector delta-p fraction of chamber pressure")
+        : Number(injectorDefaults.delta_p_fraction_of_pc ?? 0.2),
     },
     grain: {
       abs_density_kg_m3: state.defaults?.blowdown?.grain?.abs_density_kg_m3 ?? 1050.0,
       paraffin_density_kg_m3: state.defaults?.blowdown?.grain?.paraffin_density_kg_m3 ?? 930.0,
-      a_reg_si: parseNumericInput("blowdown_grain_a_reg_si", "Blowdown regression coefficient a"),
-      n_reg: parseNumericInput("blowdown_grain_n_reg", "Blowdown regression exponent n"),
-      port_count: parseNumericInput("blowdown_grain_port_count", "Blowdown grain port count", { integer: true }),
+      regression_preset: regressionPreset,
+      a_reg_si: (isAdvanced || customRegression)
+        ? parseNumericInput("blowdown_grain_a_reg_si", "Blowdown regression coefficient a")
+        : Number(grainDefaults.a_reg_si ?? 0.00005),
+      n_reg: (isAdvanced || customRegression)
+        ? parseNumericInput("blowdown_grain_n_reg", "Blowdown regression exponent n")
+        : Number(grainDefaults.n_reg ?? 0.5),
+      port_count: isAdvanced
+        ? parseNumericInput("blowdown_grain_port_count", "Blowdown grain port count", { integer: true })
+        : Number(grainDefaults.port_count ?? 1),
       target_initial_gox_kg_m2_s: parseNumericInput("blowdown_grain_target_initial_gox_kg_m2_s", "Blowdown target initial oxidizer flux"),
-      initial_port_radius_mm: parseNumericInput("blowdown_grain_initial_port_radius_mm", "Blowdown initial port radius"),
-      grain_length_m: parseNumericInput("blowdown_grain_length_m", "Blowdown grain length"),
-      fuel_usable_fraction: parseNumericInput("blowdown_grain_fuel_usable_fraction", "Blowdown fuel usable fraction"),
-      outer_radius_mm: parseNumericInput("blowdown_grain_outer_radius_mm", "Blowdown outer grain radius", { allowBlank: true }),
+      initial_port_radius_mm: isAdvanced
+        ? parseNumericInput("blowdown_grain_initial_port_radius_mm", "Blowdown initial port radius")
+        : Number(grainDefaults.initial_port_radius_mm ?? 22.0),
+      grain_length_m: isAdvanced
+        ? parseNumericInput("blowdown_grain_length_m", "Blowdown grain length")
+        : Number(grainDefaults.grain_length_m ?? 0.45),
+      fuel_usable_fraction: isAdvanced
+        ? parseNumericInput("blowdown_grain_fuel_usable_fraction", "Blowdown fuel usable fraction")
+        : Number(grainDefaults.fuel_usable_fraction ?? 0.98),
+      outer_radius_mm: isAdvanced
+        ? parseNumericInput("blowdown_grain_outer_radius_mm", "Blowdown outer grain radius", { allowBlank: true })
+        : (grainDefaults.outer_radius_mm ?? null),
       override_initial_port_radius: $("blowdown_grain_override_initial_port_radius").checked,
       override_grain_length: $("blowdown_grain_override_grain_length").checked,
       override_outer_radius: $("blowdown_grain_override_outer_radius").checked,
@@ -525,7 +846,7 @@ function previewCardsFromFields(fields) {
   return (fields || []).map((field) => ({
     label: field.label,
     value: formatCaseField(field.key, field.value),
-    hint: BLOWDOWN_FORMULA_HINTS[field.key] || `Field: ${field.key}`,
+    hint: hintForCaseField(field.key, field.label),
   }));
 }
 
@@ -533,11 +854,13 @@ function renderBlowdownPreview(preview) {
   state.blowdownPreview = preview;
   if (!preview) {
     $("blowdownLivePreview").innerHTML = chartEmptyState("Run a CEA sweep to unlock live blowdown sizing estimates.");
+    renderEstimationsPanel();
     return;
   }
   if (preview.status !== "ready") {
     const text = preview.error ? `${preview.message} ${preview.error}` : preview.message;
     $("blowdownLivePreview").innerHTML = `<div class="empty-state">${escapeHtml(text || "Live sizing preview is unavailable.")}</div>`;
+    renderEstimationsPanel();
     return;
   }
 
@@ -552,6 +875,7 @@ function renderBlowdownPreview(preview) {
       ${renderBestIspSection("Override Sources", overrideCards)}
     </article>
   `;
+  renderEstimationsPanel();
 }
 
 function clearBlowdownPreview(message) {
@@ -573,7 +897,7 @@ async function refreshBlowdownPreview() {
   } catch (error) {
     renderBlowdownPreview({
       status: "error",
-      message: "Live sizing preview needs valid inputs.",
+      message: "Live sizing preview needs input.",
       error: error.message,
     });
   }
@@ -692,6 +1016,7 @@ function mountInteractiveChart(host, config, { expandable = true } = {}) {
   const canvas = host.querySelector(".chart-canvas");
   const tooltip = host.querySelector(".chart-tooltip");
   const legend = host.querySelector(".chart-legend");
+  legend.style.maxHeight = `${Math.max(240, config.height - 8)}px`;
   const context = canvas.getContext("2d");
   const series = config.series.map((item) => ({ ...item }));
   const visible = series.map(() => true);
@@ -1088,7 +1413,7 @@ function renderChartInto(hostId, config) {
 function renderCompactCards(cards) {
   return cards.map((card) => `
     <article class="compact-output-card">
-      <div class="compact-output-label">${escapeHtml(card.label)}</div>
+      <div class="compact-output-label hover-hint" title="${escapeHtml(card.hint)}" data-tip="${escapeHtml(card.hint)}">${escapeHtml(card.label)}</div>
       <div class="compact-output-value">${escapeHtml(card.value)}</div>
       <div class="compact-output-hint">${escapeHtml(card.hint)}</div>
     </article>
@@ -1103,7 +1428,7 @@ function fieldCard(field) {
   return {
     label: field.label,
     value: formatCaseField(field.key, field.value),
-    hint: `Field: ${field.key}`,
+    hint: hintForCaseField(field.key, field.label),
   };
 }
 
@@ -1137,7 +1462,7 @@ function formatCaseField(key, value) {
     return value ? "Yes" : "No";
   }
   if (typeof value !== "number") {
-    return value ?? "-";
+    return value === null || value === undefined ? "-" : prettyBlowdownString(key, value);
   }
   if (key === "step_count" || key.endsWith("_count")) {
     return Math.round(value).toString();
@@ -1159,6 +1484,12 @@ function formatCaseField(key, value) {
   }
   if (key.endsWith("_kg_m2_s")) {
     return fmt(value, 2);
+  }
+  if (key.endsWith("_si")) {
+    return Number(value).toExponential(3);
+  }
+  if (key.includes("tolerance")) {
+    return Number(value).toExponential(3);
   }
   if (key.endsWith("_mm_s")) {
     return fmt(value, 4);
@@ -1286,10 +1617,11 @@ function renderBestIspOutput(results) {
 }
 
 function cardsFromFields(fields, hintPrefix = "Field") {
+  void hintPrefix;
   return (fields || []).map((field) => ({
     label: field.label,
     value: formatCaseField(field.key, field.value),
-    hint: BLOWDOWN_FORMULA_HINTS[field.key] || `${hintPrefix}: ${field.key}`,
+    hint: hintForCaseField(field.key, field.label),
   }));
 }
 
@@ -1311,6 +1643,38 @@ function clearBlowdownCharts(message) {
   ["blowdownPressureChart", "blowdownMassFlowChart", "blowdownThrustChart", "blowdownStateChart"].forEach((hostId) => {
     $(hostId).innerHTML = chartEmptyState(message);
   });
+}
+
+function activeEstimationSource(results = state.results) {
+  if (state.blowdownPreview?.status === "ready" && state.blowdownPreview.estimation_fields?.length) {
+    return state.blowdownPreview;
+  }
+  if (results?.blowdown?.estimation_fields?.length) {
+    return results.blowdown;
+  }
+  return null;
+}
+
+function renderEstimationsPanel(results = state.results) {
+  const item = activeEstimationSource(results);
+  if (!item) {
+    $("estimationsOutput").innerHTML = chartEmptyState("Run a CEA sweep to populate the blowdown estimations and active calculation values.");
+    return;
+  }
+
+  const estimationCards = cardsFromFields(item.estimation_fields, "Estimation field");
+  const noteText = item.status === "ready"
+    ? item.message
+    : item.message || "Specific calculation values used by the preliminary 0D blowdown model.";
+
+  $("estimationsOutput").innerHTML = `
+    <article class="best-isp-card best-isp-card-compact">
+      <p class="best-isp-note">${escapeHtml(noteText)}</p>
+      ${renderTextListSection("Derived Basis", item.estimation_notes || [])}
+      ${renderBestIspSection("Specific Values Used", estimationCards)}
+      ${renderTextListSection("Model Assumptions", item.assumptions || [])}
+    </article>
+  `;
 }
 
 function renderBlowdownOutput(results) {
@@ -1342,6 +1706,16 @@ function renderBlowdownOutput(results) {
       label: "Tank Override",
       value: item.controls.tank.override_mass_volume ? "Enabled" : "Auto-derived",
       hint: "Whether tank mass and volume are manually overridden",
+    },
+    {
+      label: "Regression Preset",
+      value: item.controls.grain.regression_preset,
+      hint: "Basic mode uses this preset to resolve the regression coefficients unless Custom is selected",
+    },
+    {
+      label: "Injector Pressure-Drop Policy",
+      value: item.controls.injector.pressure_drop_policy,
+      hint: "Basic mode uses this simple policy to pick a project-default injector delta-p fraction",
     },
     {
       label: "Injector Override",
@@ -1393,7 +1767,6 @@ function renderBlowdownOutput(results) {
         </div>
         <p class="best-isp-note">${escapeHtml(item.error ? `${item.message} ${item.error}` : item.message)}</p>
         ${renderBestIspSection("Blowdown Settings", controlCards)}
-        ${renderTextListSection("Assumptions and Estimations", item.assumptions)}
         ${renderBestIspSection("CEA Seed Case", seedCards)}
       </article>
     `;
@@ -1419,7 +1792,6 @@ function renderBlowdownOutput(results) {
       ${renderBestIspSection("Initial 0D State", initialStateCards)}
       ${renderBestIspSection("Final 0D State", finalStateCards)}
       ${renderBestIspSection("Blowdown Settings", controlCards)}
-      ${renderTextListSection("Assumptions and Estimations", item.assumptions)}
       ${renderBestIspSection("CEA Seed Case", seedCards)}
     </article>
   `;
@@ -1461,6 +1833,7 @@ function renderBlowdownCharts(results) {
 function renderBlowdownResults(results) {
   renderBlowdownOutput(results);
   renderBlowdownCharts(results);
+  renderEstimationsPanel(results);
 }
 
 function csvEscape(value) {
@@ -1530,6 +1903,7 @@ function setHero(results) {
 }
 
 function buildMetricSeries(results, metricKey) {
+  const aeAtDigits = decimalPlacesForStep(results?.controls?.ae_at?.step, 6);
   const byAeAt = new Map();
   results.cases.forEach((row) => {
     const x = Number(row.of);
@@ -1537,7 +1911,10 @@ function buildMetricSeries(results, metricKey) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       return;
     }
-    const aeAt = row.ae_at;
+    const aeAt = normalizeSweepValue(row.ae_at, aeAtDigits);
+    if (!Number.isFinite(aeAt)) {
+      return;
+    }
     if (!byAeAt.has(aeAt)) {
       byAeAt.set(aeAt, []);
     }
@@ -1547,7 +1924,7 @@ function buildMetricSeries(results, metricKey) {
   return [...byAeAt.entries()]
     .sort(([left], [right]) => Number(left) - Number(right))
     .map(([aeAt, points]) => ({
-      label: `Ae/At ${Number(aeAt).toLocaleString(undefined, { maximumFractionDigits: 6 })}`,
+      label: `Ae/At ${formatSweepValue(aeAt, aeAtDigits)}`,
       points,
     }));
 }
@@ -1762,12 +2139,15 @@ async function onBlowdownRun() {
 async function bootstrap() {
   initializeTheme();
   configureNumericInputs();
+  attachFieldLabelTooltips();
   $("sweepForm").addEventListener("submit", onSweepSubmit);
   $("runBlowdownButton").addEventListener("click", onBlowdownRun);
   $("themeToggle").addEventListener("click", toggleTheme);
   $("ae_at_custom_enabled").addEventListener("change", updateAdvancedControls);
   $("ae_at_cap_mode").addEventListener("change", updateAdvancedControls);
   $("blowdown_ui_mode").addEventListener("change", updateAdvancedControls);
+  $("blowdown_grain_regression_preset").addEventListener("change", updateAdvancedControls);
+  $("blowdown_injector_pressure_drop_policy").addEventListener("change", updateAdvancedControls);
   $("blowdown_injector_delta_p_mode").addEventListener("change", updateAdvancedControls);
   $("blowdown_tank_override_mass_volume").addEventListener("change", updateAdvancedControls);
   $("blowdown_injector_override_total_area").addEventListener("change", updateAdvancedControls);

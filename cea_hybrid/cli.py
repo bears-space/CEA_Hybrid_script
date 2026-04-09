@@ -1,17 +1,17 @@
 """Command-line entry point for batch sweep execution."""
 
-from cea_hybrid.config import load_config
-from cea_hybrid.constants import INPUTS_PATH
+from cea_hybrid.config import build_config
+from cea_hybrid.defaults import get_default_raw_config
 from cea_hybrid.outputs import write_outputs
 from cea_hybrid.sweep import run_sweep
 
 
 def main():
-    config = load_config(INPUTS_PATH)
-    output_dir = INPUTS_PATH.parent / config["output_dir"]
+    config = build_config(get_default_raw_config())
+    output_dir = config["output_dir"]
     sweep_results = run_sweep(config)
 
-    print(f"Loaded inputs from {INPUTS_PATH}")
+    print("Loaded built-in default configuration.")
     print(f"Writing CSV outputs to {output_dir}")
     print(
         "Sweep sizes: "

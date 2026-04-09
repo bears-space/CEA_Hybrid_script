@@ -1,11 +1,13 @@
 """HTTP server and background analysis job state for the browser UI."""
 
 import json
+import os
 import threading
 import time
 from copy import deepcopy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 from blowdown_hybrid import BlowdownCancelled, estimate_total_steps, run_blowdown
@@ -18,7 +20,6 @@ from blowdown_hybrid.ui_backend import (
     build_running_response,
     build_ui_response as build_blowdown_ui_response,
 )
-from cea_hybrid.constants import DEFAULT_CPU_WORKERS, UI_DIR
 from cea_hybrid.sweep import SweepCancelled, count_total_combinations, run_sweep
 from cea_hybrid.ui_backend import (
     build_default_ui_config,
@@ -29,6 +30,8 @@ from cea_hybrid.ui_backend import (
 
 HOST = "127.0.0.1"
 PORT = 8000
+ROOT_DIR = Path(__file__).resolve().parent.parent
+UI_DIR = ROOT_DIR / "ui"
 JOB_LOCK = threading.Lock()
 SWEEP_JOB = {
     "job_id": 0,
@@ -389,7 +392,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if route == "/api/default-config":
-            self._write_json(build_default_ui_config(DEFAULT_CPU_WORKERS))
+            self._write_json(build_default_ui_config(os.cpu_count() or 1))
             return
         if route == "/api/sweep-status":
             self._write_json(build_job_snapshot(include_result=True))

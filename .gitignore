@@ -1,3 +1,5 @@
 .idea
 outputs/
+output/
+output_test/
 __pycache__/

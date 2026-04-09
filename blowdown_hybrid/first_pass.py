@@ -40,6 +40,16 @@ def oxidizer_mass_flow(mdot_total_kg_s: float, of_ratio: float) -> float:
     return (of_ratio / (1.0 + of_ratio)) * mdot_total_kg_s
 
 
+def oxidizer_required_mass(mdot_ox_kg_s: float, burn_time_s: float) -> float:
+    """Return consumed oxidizer mass over the requested burn duration."""
+    return propellant_mass(mdot_ox_kg_s, burn_time_s)
+
+
+def oxidizer_loaded_mass(required_mass_kg: float, usable_oxidizer_fraction: float) -> float:
+    """Return loaded oxidizer mass from required mass and usable fraction."""
+    return loaded_mass(required_mass_kg, usable_oxidizer_fraction)
+
+
 def fuel_mass_flow(mdot_total_kg_s: float, of_ratio: float) -> float:
     """Return fuel mass flow from total flow and O/F."""
     if mdot_total_kg_s <= 0.0:
@@ -65,6 +75,15 @@ def loaded_mass(required_mass_kg: float, usable_fraction: float) -> float:
     if not (0.0 < usable_fraction <= 1.0):
         raise ValueError("usable_fraction must be in the interval (0, 1].")
     return required_mass_kg / usable_fraction
+
+
+def liquid_oxidizer_volume(loaded_mass_kg: float, rho_ox_liq_kg_m3: float) -> float:
+    """Return liquid oxidizer volume from loaded mass and liquid density."""
+    if loaded_mass_kg <= 0.0:
+        raise ValueError("loaded_mass_kg must be positive.")
+    if rho_ox_liq_kg_m3 <= 0.0:
+        raise ValueError("rho_ox_liq_kg_m3 must be positive.")
+    return loaded_mass_kg / rho_ox_liq_kg_m3
 
 
 def blend_density_from_volume_fraction(
@@ -99,18 +118,15 @@ def mass_fraction_from_volume_fraction(
 
 
 def tank_volume_from_fill_fraction(
-    loaded_oxidizer_mass_kg: float,
-    oxidizer_liquid_density_kg_m3: float,
+    liquid_volume_m3: float,
     initial_fill_fraction: float,
 ) -> float:
-    """Return total tank volume from loaded oxidizer mass and liquid fill fraction."""
-    if loaded_oxidizer_mass_kg <= 0.0:
-        raise ValueError("loaded_oxidizer_mass_kg must be positive.")
-    if oxidizer_liquid_density_kg_m3 <= 0.0:
-        raise ValueError("oxidizer_liquid_density_kg_m3 must be positive.")
+    """Return total tank volume from liquid oxidizer volume and fill fraction."""
+    if liquid_volume_m3 <= 0.0:
+        raise ValueError("liquid_volume_m3 must be positive.")
     if not (0.0 < initial_fill_fraction < 1.0):
         raise ValueError("initial_fill_fraction must be in the interval (0, 1).")
-    return loaded_oxidizer_mass_kg / (oxidizer_liquid_density_kg_m3 * initial_fill_fraction)
+    return liquid_volume_m3 / initial_fill_fraction
 
 
 def throat_area_from_mass_flow(

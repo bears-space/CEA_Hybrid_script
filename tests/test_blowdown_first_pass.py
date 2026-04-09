@@ -2,6 +2,19 @@ import math
 import unittest
 
 from blowdown_hybrid.calculations import build_runtime_inputs
+from blowdown_hybrid.config import (
+    build_config,
+    injector_pressure_drop_fraction_for_mode,
+    regression_parameters_for_mode,
+)
+from blowdown_hybrid.constants import (
+    INJECTOR_PRESSURE_DROP_POLICY_NOMINAL,
+)
+from blowdown_hybrid.defaults import (
+    PROJECT_DEFAULT_FUEL_USABLE_FRACTION,
+    PROJECT_DEFAULT_INJECTOR_CD,
+    PROJECT_DEFAULT_USABLE_OXIDIZER_FRACTION,
+)
 from blowdown_hybrid.first_pass import (
     blend_density_from_volume_fraction,
     fuel_mass_flow,
@@ -9,12 +22,21 @@ from blowdown_hybrid.first_pass import (
     grain_outer_radius_from_loaded_fuel_mass,
     initial_port_radius_from_target_gox,
     injector_total_area_from_mass_flow,
+    liquid_oxidizer_volume,
     oxidizer_mass_flow,
+    oxidizer_loaded_mass,
+    oxidizer_required_mass,
     tank_volume_from_fill_fraction,
+    total_mass_flow_from_thrust,
 )
+from blowdown_hybrid.thermo import initial_tank_state_from_temperature
+from blowdown_hybrid.ui_backend import build_config_from_payload
 
 
 class FirstPassEquationTests(unittest.TestCase):
+    def test_mass_flow_from_thrust_and_isp(self):
+        self.assertAlmostEqual(total_mass_flow_from_thrust(4000.0, 250.0), 4000.0 / (9.80665 * 250.0))
+
     def test_mass_flow_split_from_of_ratio(self):
         mdot_total = 5.0
         of_ratio = 6.0
@@ -22,10 +44,18 @@ class FirstPassEquationTests(unittest.TestCase):
         self.assertAlmostEqual(oxidizer_mass_flow(mdot_total, of_ratio), (6.0 / 7.0) * mdot_total)
         self.assertAlmostEqual(fuel_mass_flow(mdot_total, of_ratio), mdot_total / 7.0)
 
+    def test_oxidizer_required_mass_from_burn_time(self):
+        self.assertAlmostEqual(oxidizer_required_mass(2.5, 8.0), 20.0)
+
+    def test_loaded_oxidizer_mass_from_usable_fraction(self):
+        self.assertAlmostEqual(oxidizer_loaded_mass(20.0, 0.8), 25.0)
+
+    def test_liquid_oxidizer_volume_from_mass_and_density(self):
+        self.assertAlmostEqual(liquid_oxidizer_volume(20.0, 750.0), 20.0 / 750.0)
+
     def test_tank_volume_derivation(self):
         volume_m3 = tank_volume_from_fill_fraction(
-            loaded_oxidizer_mass_kg=20.0,
-            oxidizer_liquid_density_kg_m3=750.0,
+            liquid_volume_m3=20.0 / 750.0,
             initial_fill_fraction=0.8,
         )
 
@@ -110,6 +140,7 @@ class ManualOverrideRuntimeTests(unittest.TestCase):
                 "tank": {
                     "volume_m3": 0.04,
                     "initial_mass_kg": 19.0,
+                    "initial_temp_k": 290.0,
                     "override_mass_volume": True,
                 },
                 "injector": {
@@ -140,11 +171,12 @@ class ManualOverrideRuntimeTests(unittest.TestCase):
         self.assertAlmostEqual(runtime["derived"]["grain_length_m"], 0.6)
         self.assertAlmostEqual(runtime["derived"]["grain_outer_radius_mm"], 90.0)
 
-    def test_basic_mode_ignores_manual_override_flags(self):
+    def test_basic_mode_derives_tank_state_from_input_temperature(self):
         runtime = build_runtime_inputs(
             {
                 "ui_mode": "basic",
                 "tank": {
+                    "initial_temp_k": 285.0,
                     "volume_m3": 0.04,
                     "initial_mass_kg": 19.0,
                     "override_mass_volume": True,
@@ -153,9 +185,143 @@ class ManualOverrideRuntimeTests(unittest.TestCase):
             self.seed_case,
         )
 
+        tank_state = initial_tank_state_from_temperature(285.0)
         self.assertEqual(runtime["derived"]["tank_mass_volume_source"], "auto_derived")
         self.assertNotAlmostEqual(runtime["derived"]["tank_volume_l"], 40.0)
         self.assertNotAlmostEqual(runtime["derived"]["tank_initial_mass_kg"], 19.0)
+        self.assertAlmostEqual(runtime["derived"]["tank_initial_temp_k"], 285.0)
+        self.assertAlmostEqual(runtime["derived"]["tank_initial_pressure_bar"], tank_state.p_pa / 1e5)
+
+    def test_regression_preset_mapping_uses_project_default_coefficients(self):
+        config = build_config(
+            {
+                "ui_mode": "basic",
+                "grain": {
+                    "regression_preset": "project_default_paraffin_abs",
+                    "a_reg_si": 9.9e-5,
+                    "n_reg": 0.9,
+                },
+            }
+        )
+
+        a_reg_si, n_reg, source = regression_parameters_for_mode(config)
+
+        self.assertAlmostEqual(a_reg_si, 5.0e-5)
+        self.assertAlmostEqual(n_reg, 0.5)
+        self.assertEqual(source, "preset:project_default_paraffin_abs")
+
+    def test_basic_mode_uses_hidden_project_defaults(self):
+        runtime = build_runtime_inputs(
+            {
+                "ui_mode": "basic",
+                "tank": {
+                    "initial_temp_k": 285.0,
+                    "usable_oxidizer_fraction": 0.5,
+                },
+                "injector": {
+                    "cd": 0.55,
+                    "pressure_drop_policy": INJECTOR_PRESSURE_DROP_POLICY_NOMINAL,
+                },
+                "grain": {
+                    "fuel_usable_fraction": 0.5,
+                },
+            },
+            self.seed_case,
+        )
+
+        self.assertAlmostEqual(runtime["derived"]["tank_usable_oxidizer_fraction"], PROJECT_DEFAULT_USABLE_OXIDIZER_FRACTION)
+        self.assertAlmostEqual(runtime["derived"]["injector_cd"], PROJECT_DEFAULT_INJECTOR_CD)
+        self.assertAlmostEqual(runtime["derived"]["fuel_usable_fraction"], PROJECT_DEFAULT_FUEL_USABLE_FRACTION)
+        self.assertEqual(runtime["derived"]["tank_usable_fraction_source"], "project_default")
+        self.assertEqual(runtime["derived"]["injector_cd_source"], "project_default")
+        self.assertEqual(runtime["derived"]["fuel_usable_fraction_source"], "project_default")
+
+    def test_basic_mode_injector_pressure_drop_policy_mapping(self):
+        config = build_config(
+            {
+                "ui_mode": "basic",
+                "injector": {
+                    "pressure_drop_policy": INJECTOR_PRESSURE_DROP_POLICY_NOMINAL,
+                    "delta_p_fraction_of_pc": 0.9,
+                },
+            }
+        )
+
+        fraction, source = injector_pressure_drop_fraction_for_mode(config)
+
+        self.assertAlmostEqual(fraction, 0.2)
+        self.assertEqual(source, "policy:nominal")
+
+    def test_invalid_fill_fraction_validation(self):
+        with self.assertRaisesRegex(ValueError, "Initial fill fraction"):
+            build_config({"tank": {"initial_fill_fraction": 1.0}})
+
+    def test_invalid_usable_fraction_validation(self):
+        with self.assertRaisesRegex(ValueError, "Usable oxidizer fraction"):
+            build_config({"tank": {"usable_oxidizer_fraction": 0.0}})
+
+    def test_default_burn_time_is_five_seconds(self):
+        config = build_config({})
+        self.assertAlmostEqual(config["simulation"]["burn_time_s"], 5.0)
+
+    def test_payload_uses_main_oxidizer_temperature_for_tank_temperature(self):
+        config = build_config_from_payload(
+            {
+                "oxidizer_temperature_k": 287.5,
+                "ui_mode": "basic",
+                "seed_case": "highest_isp",
+                "tank": {
+                    "volume_l": 28.0,
+                    "initial_mass_kg": 18.0,
+                    "usable_oxidizer_fraction": 0.95,
+                    "initial_fill_fraction": 0.8,
+                    "override_mass_volume": False,
+                },
+                "feed": {
+                    "line_id_mm": 12.0,
+                    "line_length_m": 1.2,
+                    "friction_factor": 0.02,
+                    "minor_loss_k_total": 8.0,
+                },
+                "injector": {
+                    "cd": 0.8,
+                    "hole_count": 24,
+                    "total_area_mm2": 75.0,
+                    "override_total_area": False,
+                    "pressure_drop_policy": "nominal",
+                    "delta_p_mode": "fraction_of_pc",
+                    "delta_p_pa": 600000.0,
+                    "delta_p_fraction_of_pc": 0.2,
+                },
+                "grain": {
+                    "abs_density_kg_m3": 1050.0,
+                    "paraffin_density_kg_m3": 930.0,
+                    "regression_preset": "project_default_paraffin_abs",
+                    "a_reg_si": 5.0e-5,
+                    "n_reg": 0.5,
+                    "port_count": 1,
+                    "target_initial_gox_kg_m2_s": 250.0,
+                    "initial_port_radius_mm": 22.0,
+                    "grain_length_m": 0.45,
+                    "outer_radius_mm": 45.0,
+                    "fuel_usable_fraction": 0.98,
+                    "override_initial_port_radius": False,
+                    "override_grain_length": False,
+                    "override_outer_radius": False,
+                },
+                "simulation": {
+                    "dt_s": 0.02,
+                    "burn_time_s": 8.0,
+                    "ambient_pressure_bar": 1.01325,
+                    "max_inner_iterations": 80,
+                    "relaxation": 0.35,
+                    "relative_tolerance": 1e-6,
+                    "stop_when_tank_quality_exceeds": 0.95,
+                },
+            }
+        )
+
+        self.assertAlmostEqual(config["tank"]["initial_temp_k"], 287.5)
 
 
 if __name__ == "__main__":

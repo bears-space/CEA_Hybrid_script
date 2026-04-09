@@ -6,12 +6,12 @@ from pathlib import Path
 
 import numpy as np
 
-from cea_hybrid.constants import METRIC_OPTIONS
 from cea_hybrid.nozzle_sizing import (
     CAP_MODE_AREA_RATIO,
     CAP_MODE_EXIT_DIAMETER,
     build_ae_at_values,
 )
+from cea_hybrid.variables import METRIC_OPTIONS
 
 
 def ensure_finite(value, name):

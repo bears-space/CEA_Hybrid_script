@@ -8,6 +8,7 @@ from cea_hybrid.variables import CASE_FIELDS
 from blowdown_hybrid.calculations import build_runtime_inputs
 from blowdown_hybrid.config import build_config
 from blowdown_hybrid.constants import (
+    ESTIMATION_BASIS_NOTES,
     INJECTOR_DELTA_P_MODE_EXPLICIT,
     MODEL_ASSUMPTIONS,
     STOP_REASON_LABELS,
@@ -64,14 +65,26 @@ def _preview_fields(runtime):
         ("tank_volume_l", runtime["derived"]["tank_volume_l"]),
         ("tank_initial_mass_kg", runtime["derived"]["tank_initial_mass_kg"]),
         ("tank_initial_temp_k", runtime["derived"]["tank_initial_temp_k"]),
+        ("tank_initial_pressure_bar", runtime["derived"]["tank_initial_pressure_bar"]),
+        ("tank_usable_fraction_source", runtime["derived"]["tank_usable_fraction_source"]),
         ("target_initial_gox_kg_m2_s", runtime["derived"]["target_initial_gox_kg_m2_s"]),
         ("initial_port_area_mm2", runtime["derived"]["initial_port_area_mm2"]),
         ("initial_port_radius_mm", runtime["derived"]["initial_port_radius_mm"]),
         ("initial_regression_rate_mm_s", runtime["derived"]["initial_regression_rate_mm_s"]),
+        ("regression_preset", runtime["derived"]["regression_preset"]),
+        ("regression_a_si", runtime["derived"]["regression_a_si"]),
+        ("regression_n", runtime["derived"]["regression_n"]),
+        ("regression_source", runtime["derived"]["regression_source"]),
+        ("port_count", runtime["derived"]["port_count"]),
+        ("port_count_source", runtime["derived"]["port_count_source"]),
         ("grain_length_m", runtime["derived"]["grain_length_m"]),
         ("grain_outer_radius_mm", runtime["derived"]["grain_outer_radius_mm"]),
         ("injector_cd", runtime["derived"]["injector_cd"]),
+        ("injector_cd_source", runtime["derived"]["injector_cd_source"]),
         ("injector_hole_count", runtime["derived"]["injector_hole_count"]),
+        ("injector_hole_count_source", runtime["derived"]["injector_hole_count_source"]),
+        ("injector_pressure_drop_policy", runtime["derived"]["injector_pressure_drop_policy"]),
+        ("injector_delta_p_source", runtime["derived"]["injector_delta_p_source"]),
         ("injector_delta_p_bar", runtime["derived"]["injector_delta_p_bar"]),
         ("injector_total_area_mm2", runtime["derived"]["injector_total_area_mm2"]),
         ("injector_area_per_hole_mm2", runtime["derived"]["injector_area_per_hole_mm2"]),
@@ -84,6 +97,92 @@ def _override_fields(config, runtime):
     values = [
         ("ui_mode", config["ui_mode"]),
         ("tank_mass_volume_source", runtime["derived"]["tank_mass_volume_source"]),
+        ("tank_usable_fraction_source", runtime["derived"]["tank_usable_fraction_source"]),
+        ("injector_total_area_source", runtime["derived"]["injector_total_area_source"]),
+        ("injector_cd_source", runtime["derived"]["injector_cd_source"]),
+        ("injector_hole_count_source", runtime["derived"]["injector_hole_count_source"]),
+        ("injector_delta_p_source", runtime["derived"]["injector_delta_p_source"]),
+        ("initial_port_source", runtime["derived"]["initial_port_source"]),
+        ("regression_source", runtime["derived"]["regression_source"]),
+        ("port_count_source", runtime["derived"]["port_count_source"]),
+        ("grain_length_source", runtime["derived"]["grain_length_source"]),
+        ("fuel_usable_fraction_source", runtime["derived"]["fuel_usable_fraction_source"]),
+        ("outer_radius_source", runtime["derived"]["outer_radius_source"]),
+    ]
+    return _field_list(values)
+
+
+def _estimation_fields(runtime):
+    values = [
+        ("seed_target_thrust_n", runtime["derived"]["seed_target_thrust_n"]),
+        ("seed_isp_s", runtime["derived"]["seed_isp_s"]),
+        ("seed_of_ratio", runtime["derived"]["seed_of_ratio"]),
+        ("seed_pc_bar", runtime["derived"]["seed_pc_bar"]),
+        ("seed_fuel_temp_k", runtime["derived"]["seed_fuel_temp_k"]),
+        ("tank_initial_temp_k", runtime["derived"]["tank_initial_temp_k"]),
+        ("seed_abs_volume_fraction", runtime["derived"]["seed_abs_volume_fraction"]),
+        ("seed_abs_mass_fraction", runtime["derived"]["seed_abs_mass_fraction"]),
+        ("abs_density_kg_m3", runtime["derived"]["abs_density_kg_m3"]),
+        ("paraffin_density_kg_m3", runtime["derived"]["paraffin_density_kg_m3"]),
+        ("target_mdot_total_kg_s", runtime["derived"]["target_mdot_total_kg_s"]),
+        ("target_mdot_ox_kg_s", runtime["derived"]["target_mdot_ox_kg_s"]),
+        ("target_mdot_f_kg_s", runtime["derived"]["target_mdot_f_kg_s"]),
+        ("required_oxidizer_mass_kg", runtime["derived"]["required_oxidizer_mass_kg"]),
+        ("loaded_oxidizer_mass_kg", runtime["derived"]["loaded_oxidizer_mass_kg"]),
+        ("required_fuel_mass_kg", runtime["derived"]["required_fuel_mass_kg"]),
+        ("loaded_fuel_mass_kg", runtime["derived"]["loaded_fuel_mass_kg"]),
+        ("fuel_density_kg_m3", runtime["derived"]["fuel_density_kg_m3"]),
+        ("simulation_burn_time_s", runtime["derived"]["simulation_burn_time_s"]),
+        ("simulation_dt_s", runtime["derived"]["simulation_dt_s"]),
+        ("simulation_ambient_pressure_bar", runtime["derived"]["simulation_ambient_pressure_bar"]),
+        ("simulation_max_inner_iterations", runtime["derived"]["simulation_max_inner_iterations"]),
+        ("simulation_relaxation", runtime["derived"]["simulation_relaxation"]),
+        ("simulation_relative_tolerance", runtime["derived"]["simulation_relative_tolerance"]),
+        ("simulation_tank_quality_cutoff", runtime["derived"]["simulation_tank_quality_cutoff"]),
+        ("tank_initial_fill_fraction", runtime["derived"]["tank_initial_fill_fraction"]),
+        ("tank_usable_oxidizer_fraction", runtime["derived"]["tank_usable_oxidizer_fraction"]),
+        ("tank_usable_fraction_source", runtime["derived"]["tank_usable_fraction_source"]),
+        ("tank_oxidizer_liquid_volume_l", runtime["derived"]["tank_oxidizer_liquid_volume_l"]),
+        ("tank_volume_l", runtime["derived"]["tank_volume_l"]),
+        ("tank_initial_mass_kg", runtime["derived"]["tank_initial_mass_kg"]),
+        ("tank_initial_pressure_bar", runtime["derived"]["tank_initial_pressure_bar"]),
+        ("target_initial_gox_kg_m2_s", runtime["derived"]["target_initial_gox_kg_m2_s"]),
+        ("regression_preset", runtime["derived"]["regression_preset"]),
+        ("regression_a_si", runtime["derived"]["regression_a_si"]),
+        ("regression_n", runtime["derived"]["regression_n"]),
+        ("regression_source", runtime["derived"]["regression_source"]),
+        ("port_count", runtime["derived"]["port_count"]),
+        ("port_count_source", runtime["derived"]["port_count_source"]),
+        ("fuel_usable_fraction", runtime["derived"]["fuel_usable_fraction"]),
+        ("fuel_usable_fraction_source", runtime["derived"]["fuel_usable_fraction_source"]),
+        ("initial_port_area_mm2", runtime["derived"]["initial_port_area_mm2"]),
+        ("initial_port_radius_mm", runtime["derived"]["initial_port_radius_mm"]),
+        ("initial_regression_rate_mm_s", runtime["derived"]["initial_regression_rate_mm_s"]),
+        ("grain_length_m", runtime["derived"]["grain_length_m"]),
+        ("grain_outer_radius_mm", runtime["derived"]["grain_outer_radius_mm"]),
+        ("injector_pressure_drop_policy", runtime["derived"]["injector_pressure_drop_policy"]),
+        ("injector_delta_p_mode", runtime["derived"]["injector_delta_p_mode"]),
+        ("injector_delta_p_fraction_of_pc", runtime["derived"]["injector_delta_p_fraction_of_pc"]),
+        ("injector_delta_p_bar", runtime["derived"]["injector_delta_p_bar"]),
+        ("injector_delta_p_source", runtime["derived"]["injector_delta_p_source"]),
+        ("injector_cd", runtime["derived"]["injector_cd"]),
+        ("injector_cd_source", runtime["derived"]["injector_cd_source"]),
+        ("injector_hole_count", runtime["derived"]["injector_hole_count"]),
+        ("injector_hole_count_source", runtime["derived"]["injector_hole_count_source"]),
+        ("injector_total_area_mm2", runtime["derived"]["injector_total_area_mm2"]),
+        ("injector_area_per_hole_mm2", runtime["derived"]["injector_area_per_hole_mm2"]),
+        ("injector_hole_diameter_mm", runtime["derived"]["injector_hole_diameter_mm"]),
+        ("feed_line_id_mm", runtime["derived"]["feed_line_id_mm"]),
+        ("feed_line_length_m", runtime["derived"]["feed_line_length_m"]),
+        ("feed_friction_factor", runtime["derived"]["feed_friction_factor"]),
+        ("feed_minor_loss_k_total", runtime["derived"]["feed_minor_loss_k_total"]),
+        ("design_tank_pressure_bar", runtime["derived"]["design_tank_pressure_bar"]),
+        ("design_liquid_density_kg_m3", runtime["derived"]["design_liquid_density_kg_m3"]),
+        ("design_feed_pressure_drop_bar", runtime["derived"]["design_feed_pressure_drop_bar"]),
+        ("design_injector_inlet_pressure_bar", runtime["derived"]["design_injector_inlet_pressure_bar"]),
+        ("design_injector_delta_p_bar", runtime["derived"]["design_injector_delta_p_bar"]),
+        ("tank_mass_volume_source", runtime["derived"]["tank_mass_volume_source"]),
+        ("tank_volume_source", runtime["derived"]["tank_volume_source"]),
         ("injector_total_area_source", runtime["derived"]["injector_total_area_source"]),
         ("initial_port_source", runtime["derived"]["initial_port_source"]),
         ("grain_length_source", runtime["derived"]["grain_length_source"]),
@@ -117,6 +216,7 @@ def build_default_ui_config(raw):
             "hole_count": config["injector"]["hole_count"],
             "total_area_mm2": config["injector"]["total_area_m2"] * 1e6,
             "override_total_area": config["injector"]["override_total_area"],
+            "pressure_drop_policy": config["injector"]["pressure_drop_policy"],
             "delta_p_mode": config["injector"]["delta_p_mode"],
             "delta_p_pa": config["injector"]["delta_p_pa"],
             "delta_p_fraction_of_pc": config["injector"]["delta_p_fraction_of_pc"],
@@ -124,6 +224,7 @@ def build_default_ui_config(raw):
         "grain": {
             "abs_density_kg_m3": config["grain"]["abs_density_kg_m3"],
             "paraffin_density_kg_m3": config["grain"]["paraffin_density_kg_m3"],
+            "regression_preset": config["grain"]["regression_preset"],
             "a_reg_si": config["grain"]["a_reg_si"],
             "n_reg": config["grain"]["n_reg"],
             "port_count": config["grain"]["port_count"],
@@ -149,6 +250,10 @@ def build_default_ui_config(raw):
 
 
 def build_config_from_payload(payload):
+    oxidizer_temp_k = payload.get("oxidizer_temperature_k", payload["tank"].get("initial_temp_k"))
+    if oxidizer_temp_k is None:
+        raise ValueError("Oxidizer temperature is required for the preliminary 0D blowdown model.")
+
     return build_config(
         {
             "auto_run_after_cea": bool(payload.get("auto_run_after_cea", True)),
@@ -157,7 +262,7 @@ def build_config_from_payload(payload):
             "tank": {
                 "volume_m3": float(payload["tank"]["volume_l"]) / 1000.0,
                 "initial_mass_kg": float(payload["tank"]["initial_mass_kg"]),
-                "initial_temp_k": float(payload["tank"]["initial_temp_k"]),
+                "initial_temp_k": float(oxidizer_temp_k),
                 "usable_oxidizer_fraction": float(payload["tank"]["usable_oxidizer_fraction"]),
                 "initial_fill_fraction": float(payload["tank"]["initial_fill_fraction"]),
                 "override_mass_volume": bool(payload["tank"].get("override_mass_volume", False)),
@@ -173,6 +278,7 @@ def build_config_from_payload(payload):
                 "hole_count": int(payload["injector"]["hole_count"]),
                 "total_area_m2": float(payload["injector"]["total_area_mm2"]) / 1e6,
                 "override_total_area": bool(payload["injector"].get("override_total_area", False)),
+                "pressure_drop_policy": payload["injector"]["pressure_drop_policy"],
                 "delta_p_mode": payload["injector"]["delta_p_mode"],
                 "delta_p_pa": float(payload["injector"]["delta_p_pa"]),
                 "delta_p_fraction_of_pc": float(payload["injector"]["delta_p_fraction_of_pc"]),
@@ -180,6 +286,7 @@ def build_config_from_payload(payload):
             "grain": {
                 "abs_density_kg_m3": float(payload["grain"]["abs_density_kg_m3"]),
                 "paraffin_density_kg_m3": float(payload["grain"]["paraffin_density_kg_m3"]),
+                "regression_preset": payload["grain"]["regression_preset"],
                 "a_reg_si": float(payload["grain"]["a_reg_si"]),
                 "n_reg": float(payload["grain"]["n_reg"]),
                 "port_count": int(payload["grain"]["port_count"]),
@@ -221,6 +328,7 @@ def build_pending_response(config, seed_case, status, message, error=None):
         "seed_case": {key: seed_case[key] for key in CASE_FIELDS if key in seed_case},
         "seed_case_fields": _seed_case_fields(seed_case),
         "controls": build_default_ui_config({"blowdown": config}),
+        "estimation_notes": ESTIMATION_BASIS_NOTES,
         "assumptions": MODEL_ASSUMPTIONS,
     }
 
@@ -268,7 +376,9 @@ def build_preview_response(config, seed_case):
     return {
         "status": "ready",
         "message": (
-            "Basic mode uses the latest completed highest-Isp CEA case for Isp, O/F, c*, temperatures, and ABS volume fraction."
+            "Basic mode uses the latest completed highest-Isp CEA case for Isp, O/F, c*, and ABS volume fraction. "
+            "Tank mass, liquid volume, tank volume, and initial tank pressure are derived from burn time + O/F + Isp + oxidizer temperature + fill policy. "
+            "Injector Cd, injector hole count, usable fractions, and port count use project defaults unless advanced mode is active."
             if config["ui_mode"] == UI_MODE_BASIC
             else "Advanced mode is active. Manual overrides marked as overridden take precedence over the first-pass estimates."
         ),
@@ -276,6 +386,9 @@ def build_preview_response(config, seed_case):
         "controls": controls,
         "seed_case_source_label": "Highest Isp CEA Case",
         "seed_case_fields": _seed_case_fields(seed_case),
+        "estimation_notes": ESTIMATION_BASIS_NOTES,
+        "estimation_fields": _estimation_fields(runtime),
+        "assumptions": MODEL_ASSUMPTIONS,
         "preview_fields": _preview_fields(runtime),
         "override_fields": _override_fields(config, runtime),
     }
@@ -332,6 +445,14 @@ def build_ui_response(config, seed_case, runtime, runtime_seconds):
         ("tank_volume_l", runtime["derived"]["tank_volume_l"]),
         ("tank_initial_mass_kg", runtime["derived"]["tank_initial_mass_kg"]),
         ("tank_initial_temp_k", runtime["derived"]["tank_initial_temp_k"]),
+        ("tank_initial_pressure_bar", runtime["derived"]["tank_initial_pressure_bar"]),
+        ("tank_usable_fraction_source", runtime["derived"]["tank_usable_fraction_source"]),
+        ("regression_preset", runtime["derived"]["regression_preset"]),
+        ("regression_a_si", runtime["derived"]["regression_a_si"]),
+        ("regression_n", runtime["derived"]["regression_n"]),
+        ("regression_source", runtime["derived"]["regression_source"]),
+        ("port_count", runtime["derived"]["port_count"]),
+        ("port_count_source", runtime["derived"]["port_count_source"]),
         ("target_initial_gox_kg_m2_s", runtime["derived"]["target_initial_gox_kg_m2_s"]),
         ("initial_port_area_mm2", runtime["derived"]["initial_port_area_mm2"]),
         ("initial_port_radius_mm", runtime["derived"]["initial_port_radius_mm"]),
@@ -342,8 +463,12 @@ def build_ui_response(config, seed_case, runtime, runtime_seconds):
 
     injector_estimate_values = [
         ("injector_cd", runtime["derived"]["injector_cd"]),
+        ("injector_cd_source", runtime["derived"]["injector_cd_source"]),
         ("injector_hole_count", runtime["derived"]["injector_hole_count"]),
+        ("injector_hole_count_source", runtime["derived"]["injector_hole_count_source"]),
+        ("injector_pressure_drop_policy", runtime["derived"]["injector_pressure_drop_policy"]),
         ("injector_delta_p_mode", runtime["derived"]["injector_delta_p_mode"]),
+        ("injector_delta_p_source", runtime["derived"]["injector_delta_p_source"]),
         ("injector_delta_p_bar", runtime["derived"]["injector_delta_p_bar"]),
         ("injector_total_area_mm2", runtime["derived"]["injector_total_area_mm2"]),
         ("injector_area_per_hole_mm2", runtime["derived"]["injector_area_per_hole_mm2"]),
@@ -361,9 +486,16 @@ def build_ui_response(config, seed_case, runtime, runtime_seconds):
 
     override_values = [
         ("tank_mass_volume_source", runtime["derived"]["tank_mass_volume_source"]),
+        ("tank_usable_fraction_source", runtime["derived"]["tank_usable_fraction_source"]),
         ("injector_total_area_source", runtime["derived"]["injector_total_area_source"]),
+        ("injector_cd_source", runtime["derived"]["injector_cd_source"]),
+        ("injector_hole_count_source", runtime["derived"]["injector_hole_count_source"]),
+        ("injector_delta_p_source", runtime["derived"]["injector_delta_p_source"]),
         ("initial_port_source", runtime["derived"]["initial_port_source"]),
+        ("regression_source", runtime["derived"]["regression_source"]),
+        ("port_count_source", runtime["derived"]["port_count_source"]),
         ("grain_length_source", runtime["derived"]["grain_length_source"]),
+        ("fuel_usable_fraction_source", runtime["derived"]["fuel_usable_fraction_source"]),
         ("outer_radius_source", runtime["derived"]["outer_radius_source"]),
     ]
 
@@ -419,6 +551,8 @@ def build_ui_response(config, seed_case, runtime, runtime_seconds):
         "seed_case": {key: seed_case[key] for key in CASE_FIELDS if key in seed_case},
         "seed_case_fields": _seed_case_fields(seed_case),
         "controls": build_default_ui_config({"blowdown": config}),
+        "estimation_notes": ESTIMATION_BASIS_NOTES,
+        "estimation_fields": _estimation_fields(runtime),
         "summary_fields": _field_list(summary_values),
         "derived_fields": _field_list(derived_values),
         "injector_estimate_fields": _field_list(injector_estimate_values),

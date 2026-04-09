@@ -1,0 +1,253 @@
+﻿{
+  "cea": {
+    "target_thrust_n": 4000.0,
+    "max_exit_diameter_cm": 12.0,
+    "max_area_ratio": 24.0,
+    "ae_at_cap_mode": "exit_diameter",
+    "pc_bar": 30.0,
+    "iac": true,
+    "cpu_workers": "auto",
+    "summary_metric": "isp_vac_s",
+    "output_dir": "outputs",
+    "plots": {
+      "enabled": true,
+      "metric": "isp_vac_s",
+      "output_dir": "plots"
+    },
+    "blowdown": {
+      "auto_run_after_cea": true,
+      "ui_mode": "basic",
+      "seed_case": "highest_isp",
+      "tank": {
+        "volume_m3": 0.028,
+        "initial_mass_kg": 18.0,
+        "initial_temp_k": 293.15,
+        "usable_oxidizer_fraction": 0.95,
+        "initial_fill_fraction": 0.8,
+        "override_mass_volume": false
+      },
+      "feed": {
+        "line_id_m": 0.012,
+        "line_length_m": 1.2,
+        "friction_factor": 0.02,
+        "minor_loss_k_total": 8.0
+      },
+      "injector": {
+        "cd": 0.8,
+        "hole_count": 24,
+        "total_area_m2": 7.5e-05,
+        "override_total_area": false,
+        "pressure_drop_policy": "nominal",
+        "delta_p_mode": "fraction_of_pc",
+        "delta_p_pa": 600000.0,
+        "delta_p_fraction_of_pc": 0.2
+      },
+      "grain": {
+        "abs_density_kg_m3": 1050.0,
+        "paraffin_density_kg_m3": 930.0,
+        "regression_preset": "project_default_paraffin_abs",
+        "a_reg_si": 5.0e-05,
+        "n_reg": 0.5,
+        "port_count": 1,
+        "target_initial_gox_kg_m2_s": 250.0,
+        "initial_port_radius_m": 0.022,
+        "grain_length_m": 0.45,
+        "fuel_usable_fraction": 0.98,
+        "outer_radius_m": 0.045,
+        "override_initial_port_radius": false,
+        "override_grain_length": false,
+        "override_outer_radius": false
+      },
+      "simulation": {
+        "dt_s": 0.02,
+        "burn_time_s": 5.0,
+        "ambient_pressure_pa": 101325.0,
+        "max_inner_iterations": 80,
+        "relaxation": 0.35,
+        "relative_tolerance": 1.0e-06,
+        "stop_when_tank_quality_exceeds": 0.95
+      }
+    },
+    "sweeps": {
+      "ae_at": {
+        "custom_enabled": true,
+        "start": 1.0,
+        "stop": 24.0,
+        "step": 0.1,
+        "cf_search_upper_bound": 3.0
+      },
+      "of": {
+        "start": 1.0,
+        "stop": 14.0,
+        "count": 100
+      },
+      "abs_volume_fractions": [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3],
+      "fuel_temperatures_k": [273.15, 283.15, 293.15, 303.15, 313.15, 323.15],
+      "oxidizer_temperatures_k": [273.15, 283.15, 293.15, 303.15, 313.15, 323.15]
+    },
+    "species": {
+      "oxidizer": "N2O",
+      "fuel_main": "C2H4",
+      "styrene": "C8H8,styrene",
+      "butadiene": "C4H6,butadiene"
+    },
+    "densities_g_cm3": {
+      "paraffin": 0.93,
+      "abs": 1.05
+    },
+    "abs_surrogate": {
+      "styrene_share": 55.0,
+      "butadiene_share": 20.0
+    }
+  },
+  "design_workflow": {
+    "nominal": {
+      "performance": {
+        "target_thrust_n": 4000.0,
+        "of_ratio": 6.0,
+        "isp_s": 260.0,
+        "pc_bar": 30.0,
+        "ae_at": 12.0,
+        "cstar_mps": 1500.0,
+        "cf": 1.45,
+        "fuel_temperature_k": 293.15,
+        "tank_temperature_k": 293.15,
+        "abs_volume_fraction": 0.1
+      },
+      "blowdown": {
+        "auto_run_after_cea": false,
+        "ui_mode": "advanced",
+        "seed_case": "highest_isp",
+        "tank": {
+          "volume_m3": 0.028,
+          "initial_mass_kg": 18.0,
+          "initial_temp_k": 293.15,
+          "usable_oxidizer_fraction": 0.95,
+          "initial_fill_fraction": 0.8,
+          "override_mass_volume": false
+        },
+        "feed": {
+          "line_id_m": 0.012,
+          "line_length_m": 1.2,
+          "friction_factor": 0.02,
+          "minor_loss_k_total": 8.0
+        },
+        "injector": {
+          "cd": 0.8,
+          "hole_count": 24,
+          "total_area_m2": 7.5e-05,
+          "override_total_area": false,
+          "pressure_drop_policy": "nominal",
+          "delta_p_mode": "fraction_of_pc",
+          "delta_p_pa": 600000.0,
+          "delta_p_fraction_of_pc": 0.2
+        },
+        "grain": {
+          "abs_density_kg_m3": 1050.0,
+          "paraffin_density_kg_m3": 930.0,
+          "regression_preset": "custom",
+          "a_reg_si": 5.0e-05,
+          "n_reg": 0.5,
+          "port_count": 1,
+          "target_initial_gox_kg_m2_s": 250.0,
+          "initial_port_radius_m": 0.022,
+          "grain_length_m": 0.45,
+          "outer_radius_m": 0.045,
+          "fuel_usable_fraction": 0.98,
+          "override_initial_port_radius": false,
+          "override_grain_length": false,
+          "override_outer_radius": false
+        },
+        "simulation": {
+          "dt_s": 0.02,
+          "burn_time_s": 5.0,
+          "ambient_pressure_pa": 101325.0,
+          "max_inner_iterations": 80,
+          "relaxation": 0.35,
+          "relative_tolerance": 1.0e-06,
+          "stop_when_tank_quality_exceeds": 0.95
+        }
+      },
+      "loss_factors": {
+        "cstar_efficiency": 1.0,
+        "cf_efficiency": 1.0,
+        "line_loss_multiplier": 1.0,
+        "nozzle_discharge_factor": 1.0
+      }
+    },
+    "uncertainty": {
+      "tank_temperature_k": {"mode": "absolute", "value": 5.0},
+      "fill_fraction": {"mode": "absolute", "value": 0.05},
+      "usable_ox_fraction": {"mode": "absolute", "value": 0.03},
+      "injector_cd": {"mode": "percent", "value": 0.05},
+      "regression_a": {"mode": "percent", "value": 0.1},
+      "regression_n": {"mode": "absolute", "value": 0.03},
+      "cstar_efficiency": {"mode": "percent", "value": 0.03},
+      "cf_efficiency": {"mode": "percent", "value": 0.03},
+      "usable_fuel_fraction": {"mode": "absolute", "value": 0.02},
+      "injector_dp_fraction": {"mode": "absolute", "value": 0.03},
+      "line_loss_multiplier": {"mode": "percent", "value": 0.1},
+      "nozzle_discharge_factor": {"mode": "percent", "value": 0.02}
+    },
+    "constraints": {
+      "pc_peak_bar": {"max": 60.0},
+      "pc_avg_bar": {"min": 10.0},
+      "thrust_avg_n": {"min": 3000.0},
+      "thrust_peak_n": {"max": 6000.0},
+      "of_avg": {"min": 2.0, "max": 12.0},
+      "burn_time_actual_s": {"min": 4.0, "max": 6.0},
+      "status": {"allowed": ["completed"]}
+    },
+    "geometry_policy": {
+      "single_port_baseline": true,
+      "baseline_port_count": 1,
+      "prechamber_enabled": true,
+      "postchamber_enabled": true,
+      "axial_showerhead_injector_baseline": true,
+      "injector_discharges_to_prechamber": true,
+      "grain_to_chamber_radial_clearance_m": 0.003,
+      "injector_face_margin_factor": 1.05,
+      "max_injector_face_margin_factor": 1.2,
+      "prechamber_length_fraction_of_grain": 0.15,
+      "postchamber_length_fraction_of_grain": 0.12,
+      "injector_plate_thickness_m": 0.008,
+      "chamber_wall_thickness_guess_m": 0.004,
+      "min_radial_web_m": 0.003,
+      "min_nozzle_area_ratio": 1.0,
+      "max_nozzle_area_ratio": 40.0,
+      "min_chamber_to_throat_diameter_ratio": 1.5,
+      "max_chamber_to_throat_diameter_ratio": 8.0,
+      "min_port_to_throat_diameter_ratio": 1.05,
+      "max_port_to_throat_diameter_ratio": 8.0,
+      "lstar_report_only": true,
+      "lstar_warning_min_m": 0.5,
+      "lstar_warning_max_m": 2.0,
+      "require_nominal_constraints_pass": true,
+      "require_corner_constraints_pass": true,
+      "use_nominal_case_for_cea_reference": true
+    },
+    "sensitivity_metrics": ["pc_avg_bar", "pc_peak_bar", "thrust_avg_n", "impulse_total_ns", "of_avg"],
+    "corner_cases": {
+      "hot_aggressive": {
+        "tank_temperature_k": "high",
+        "injector_cd": "high",
+        "regression_a": "high"
+      },
+      "cold_weak": {
+        "tank_temperature_k": "low",
+        "injector_cd": "low",
+        "regression_a": "low"
+      },
+      "high_pressure_risk": {
+        "tank_temperature_k": "high",
+        "injector_cd": "high",
+        "cstar_efficiency": "high"
+      },
+      "burnout_risk": {
+        "tank_temperature_k": "low",
+        "usable_ox_fraction": "low",
+        "regression_a": "low"
+      }
+    }
+  }
+}

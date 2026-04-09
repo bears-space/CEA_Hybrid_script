@@ -1,10 +1,10 @@
 """Sweep orchestration and multiprocessing execution."""
 
+import os
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from itertools import product
 
 from cea_hybrid.calculations import build_cea_objects, run_case
-from cea_hybrid.constants import DEFAULT_CPU_WORKERS
 
 
 _WORKER_CONFIG = None
@@ -18,7 +18,7 @@ class SweepCancelled(Exception):
 
 def resolve_cpu_workers(config):
     if config["cpu_workers"] == "auto":
-        return DEFAULT_CPU_WORKERS
+        return os.cpu_count() or 1
     return max(1, int(config["cpu_workers"]))
 
 

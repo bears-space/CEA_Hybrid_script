@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import numpy as np
 
 from blowdown_hybrid.constants import N2O_T_MAX_K, N2O_T_MIN_K, NITROUS_OXIDE_FLUID
@@ -18,15 +20,33 @@ def _require_coolprop():
         raise RuntimeError("CoolProp is required for the blowdown model. Install it in the project environment.")
 
 
-def sat_props_n2o(T_k: float) -> TankThermoState:
-    """Saturated liquid and vapor properties for N2O at the given temperature."""
+def validate_n2o_temperature_k(T_k: float) -> float:
+    """Validate that the requested N2O saturation temperature is in the supported range."""
+    if not N2O_T_MIN_K <= T_k <= N2O_T_MAX_K:
+        raise ValueError(
+            f"Oxidizer temperature must stay within the supported N2O saturation range of "
+            f"{N2O_T_MIN_K:.1f} K to {N2O_T_MAX_K:.1f} K."
+        )
+    return T_k
+
+
+@lru_cache(maxsize=2048)
+def _sat_props_tuple_n2o(T_k: float) -> tuple[float, float, float, float, float, float]:
+    """Cached saturated N2O properties keyed by temperature."""
     _require_coolprop()
+    validate_n2o_temperature_k(T_k)
     p_pa = CP.PropsSI("P", "T", T_k, "Q", 0, NITROUS_OXIDE_FLUID)
     rho_l = CP.PropsSI("Dmass", "T", T_k, "Q", 0, NITROUS_OXIDE_FLUID)
     rho_v = CP.PropsSI("Dmass", "T", T_k, "Q", 1, NITROUS_OXIDE_FLUID)
     u_l = CP.PropsSI("Umass", "T", T_k, "Q", 0, NITROUS_OXIDE_FLUID)
     u_v = CP.PropsSI("Umass", "T", T_k, "Q", 1, NITROUS_OXIDE_FLUID)
     h_l = CP.PropsSI("Hmass", "T", T_k, "Q", 0, NITROUS_OXIDE_FLUID)
+    return p_pa, rho_l, rho_v, u_l, u_v, h_l
+
+
+def sat_props_n2o(T_k: float) -> TankThermoState:
+    """Saturated liquid and vapor properties for N2O at the given temperature."""
+    p_pa, rho_l, rho_v, u_l, u_v, h_l = _sat_props_tuple_n2o(float(T_k))
     return TankThermoState(
         T_k=T_k,
         p_pa=p_pa,
@@ -37,6 +57,11 @@ def sat_props_n2o(T_k: float) -> TankThermoState:
         u_v_j_kg=u_v,
         h_l_j_kg=h_l,
     )
+
+
+def initial_tank_state_from_temperature(oxidizer_temp_k: float) -> TankThermoState:
+    """Return the saturated initial tank state for a self-pressurized N2O tank at the chosen temperature."""
+    return sat_props_n2o(oxidizer_temp_k)
 
 
 def quality_from_T_m_V(T_k: float, mass_kg: float, volume_m3: float) -> float:

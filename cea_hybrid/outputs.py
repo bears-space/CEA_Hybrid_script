@@ -5,8 +5,9 @@ import html
 import math
 import shutil
 
-from cea_hybrid.constants import CASE_FIELDS, FAILURE_FIELDS, PLOT_COLORS
+from cea_hybrid.constants import PLOT_COLORS
 from cea_hybrid.labels import float_tag, metric_label, temperature_pair_label
+from cea_hybrid.variables import CASE_FIELDS, FAILURE_FIELDS
 
 
 def write_csv(path, rows, fieldnames):

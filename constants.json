@@ -1,0 +1,104 @@
+﻿{
+  "cea": {
+    "plot_colors": [
+      "#0b7285",
+      "#c92a2a",
+      "#5f3dc4",
+      "#2b8a3e",
+      "#e67700",
+      "#495057",
+      "#1c7ed6",
+      "#d6336c",
+      "#5c940d",
+      "#9c36b5"
+    ]
+  },
+  "blowdown": {
+    "physics": {
+      "g0_mps2": 9.80665,
+      "nitrous_oxide_fluid": "NitrousOxide",
+      "n2o_temperature_limits_k": {
+        "min": 184.0,
+        "max": 309.0
+      }
+    },
+    "seed_case": {
+      "highest_isp": "highest_isp"
+    },
+    "ui_modes": {
+      "basic": "basic",
+      "advanced": "advanced"
+    },
+    "injector_delta_p_modes": {
+      "explicit": "explicit",
+      "fraction_of_pc": "fraction_of_pc"
+    },
+    "regression_presets": {
+      "custom": {
+        "key": "custom",
+        "label": "Custom",
+        "a_reg_si": null,
+        "n_reg": null
+      },
+      "project_default_paraffin_abs": {
+        "key": "project_default_paraffin_abs",
+        "label": "Paraffin + ABS baseline (Project Default)",
+        "a_reg_si": 5.0e-05,
+        "n_reg": 0.5
+      }
+    },
+    "injector_pressure_drop_policies": {
+      "low": {
+        "key": "low",
+        "label": "Low (Project Default 0.15 Pc)",
+        "delta_p_fraction_of_pc": 0.15
+      },
+      "nominal": {
+        "key": "nominal",
+        "label": "Nominal (Project Default 0.20 Pc)",
+        "delta_p_fraction_of_pc": 0.2
+      },
+      "conservative": {
+        "key": "conservative",
+        "label": "Conservative (Project Default 0.30 Pc)",
+        "delta_p_fraction_of_pc": 0.3
+      }
+    },
+    "stop_reason_labels": {
+      "burn_time_reached": "Burn time reached.",
+      "tank_quality_limit_exceeded": "Tank quality limit exceeded; vapor ingestion is likely.",
+      "port_radius_reached_outer_radius": "Port radius reached the configured outer radius.",
+      "tank_depleted": "Tank mass reached zero."
+    },
+    "estimation_basis_notes": [
+      "Derived Tank Basis: Derived from burn time + O/F + Isp + oxidizer temperature + fill policy.",
+      "Derived Grain Basis: Derived from target initial Gox, regression preset/default, and project-default port-count policy unless advanced mode is active.",
+      "Derived Injector Basis: Derived from oxidizer flow, liquid density, a project-default Cd/hole-count, and the selected injector pressure-drop policy unless advanced mode is active."
+    ],
+    "model_assumptions": [
+      "The highest-Isp converged CEA case is used as a single steady design seed for the transient 0D blowdown run.",
+      "Tank thermodynamics assume a rigid, adiabatic, saturated two-phase nitrous tank in equilibrium.",
+      "The tank model assumes liquid draw only and stops once vapor quality reaches the configured cutoff.",
+      "Nitrous properties are taken from CoolProp saturation states within the hardcoded 184 K to 309 K search range.",
+      "In basic mode, oxidizer tank temperature is a primary user input; saturated nitrous pressure and liquid density are taken directly from the existing CoolProp saturation helper at that temperature.",
+      "In basic mode, usable oxidizer fraction is treated as a project default unless advanced mode is active.",
+      "Feed losses are reduced to a lumped Darcy-plus-minor-loss model with fixed friction factor and fixed total K.",
+      "Injector flow uses an incompressible single-phase orifice equation with fixed Cd and no flashing or two-phase correction.",
+      "In basic mode, injector discharge coefficient, hole count, and pressure-drop policy are treated as project defaults unless advanced mode is active.",
+      "Injector total area is first estimated from oxidizer flow, liquid density, Cd, and either an explicit injector delta-p or a chosen fraction of chamber pressure.",
+      "Fuel blend density is estimated from the seeded CEA ABS volume fraction and the configured ABS/paraffin material densities.",
+      "In basic mode, the regression law coefficients and port count come from a project preset/default unless advanced mode is active.",
+      "Grain regression uses a fixed empirical law rdot = a * Gox^n with constant user-provided coefficients.",
+      "Initial port radius is estimated from the target initial oxidizer flux and the seeded oxidizer design flow.",
+      "Fuel usable fraction is treated as a project default in basic mode unless advanced mode is active.",
+      "Grain length is estimated from target fuel mass flow, blend density, initial port diameter, and the initial regression rate.",
+      "Outer grain radius is estimated from loaded fuel mass, blend density, initial port radius, and grain length.",
+      "Port growth is treated uniformly across all ports with no axial, circumferential, or erosive-burning nonuniformity model.",
+      "Chamber pressure is inferred from mdot_total * c* / At using the CEA-seeded throat area and a constant c*.",
+      "Thrust is inferred from Cf * Pc * At using a constant CEA-seeded Cf for the entire transient run.",
+      "The ambient-pressure input is not currently used to recompute a time-varying nozzle correction during the transient thrust solve.",
+      "No finite-rate chemistry, combustion-efficiency correction, heat-transfer model, structural response, or injector transient is resolved.",
+      "The result is a preliminary 0D system model intended for first-pass sizing trends, not a high-fidelity flight prediction."
+    ]
+  }
+}
