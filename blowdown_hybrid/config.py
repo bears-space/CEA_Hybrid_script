@@ -63,6 +63,9 @@ def build_config(raw=None):
             "line_length_m": float(merged["feed"]["line_length_m"]),
             "friction_factor": float(merged["feed"]["friction_factor"]),
             "minor_loss_k_total": float(merged["feed"]["minor_loss_k_total"]),
+            "loss_model": merged["feed"]["loss_model"],
+            "pressure_drop_multiplier": float(merged["feed"]["pressure_drop_multiplier"]),
+            "manual_delta_p_pa": float(merged["feed"]["manual_delta_p_pa"]),
         },
         "injector": {
             "cd": float(merged["injector"]["cd"]),
@@ -70,6 +73,8 @@ def build_config(raw=None):
             "total_area_m2": float(merged["injector"]["total_area_m2"]),
             "override_total_area": bool(merged["injector"]["override_total_area"]),
             "pressure_drop_policy": merged["injector"]["pressure_drop_policy"],
+            "sizing_condition": merged["injector"]["sizing_condition"],
+            "minimum_dp_over_pc": float(merged["injector"]["minimum_dp_over_pc"]),
             "delta_p_mode": merged["injector"]["delta_p_mode"],
             "delta_p_pa": float(merged["injector"]["delta_p_pa"]),
             "delta_p_fraction_of_pc": float(merged["injector"]["delta_p_fraction_of_pc"]),
@@ -100,7 +105,10 @@ def build_config(raw=None):
             "relaxation": float(merged["simulation"]["relaxation"]),
             "relative_tolerance": float(merged["simulation"]["relative_tolerance"]),
             "stop_when_tank_quality_exceeds": float(merged["simulation"]["stop_when_tank_quality_exceeds"]),
+            "oxidizer_depletion_policy": merged["simulation"]["oxidizer_depletion_policy"],
+            "stop_on_quality_limit": bool(merged["simulation"]["stop_on_quality_limit"]),
         },
+        "geometry_policy": dict((raw or {}).get("geometry_policy", {})),
     }
     validate_config(config)
     return config
@@ -122,8 +130,11 @@ def validate_config(config):
         ("feed.line_length_m", config["feed"]["line_length_m"]),
         ("feed.friction_factor", config["feed"]["friction_factor"]),
         ("feed.minor_loss_k_total", config["feed"]["minor_loss_k_total"]),
+        ("feed.pressure_drop_multiplier", config["feed"]["pressure_drop_multiplier"]),
+        ("feed.manual_delta_p_pa", config["feed"]["manual_delta_p_pa"]),
         ("injector.cd", config["injector"]["cd"]),
         ("injector.total_area_m2", config["injector"]["total_area_m2"]),
+        ("injector.minimum_dp_over_pc", config["injector"]["minimum_dp_over_pc"]),
         ("injector.delta_p_pa", config["injector"]["delta_p_pa"]),
         ("injector.delta_p_fraction_of_pc", config["injector"]["delta_p_fraction_of_pc"]),
         ("grain.abs_density_kg_m3", config["grain"]["abs_density_kg_m3"]),
@@ -163,6 +174,12 @@ def validate_config(config):
         raise ValueError("Feed friction factor cannot be negative.")
     if config["feed"]["minor_loss_k_total"] < 0.0:
         raise ValueError("Feed minor loss K cannot be negative.")
+    if config["feed"]["loss_model"] not in {"hydraulic_lumped_k", "manual_override"}:
+        raise ValueError("Unsupported feed loss model.")
+    if config["feed"]["pressure_drop_multiplier"] <= 0.0:
+        raise ValueError("Feed pressure-drop multiplier must be positive.")
+    if config["feed"]["manual_delta_p_pa"] < 0.0:
+        raise ValueError("Manual feed pressure drop cannot be negative.")
 
     if config["injector"]["cd"] <= 0.0:
         raise ValueError("Injector discharge coefficient must be positive.")
@@ -172,6 +189,10 @@ def validate_config(config):
         raise ValueError("Manual injector total area must be positive.")
     if config["injector"]["pressure_drop_policy"] not in INJECTOR_PRESSURE_DROP_POLICY_OPTIONS:
         raise ValueError("Unknown injector pressure-drop policy.")
+    if config["injector"]["sizing_condition"] != "nominal_initial":
+        raise ValueError("Only nominal_initial injector sizing is currently supported.")
+    if config["injector"]["minimum_dp_over_pc"] <= 0.0:
+        raise ValueError("Minimum injector delta-p over Pc must be positive.")
     if config["injector"]["delta_p_mode"] not in {
         INJECTOR_DELTA_P_MODE_EXPLICIT,
         INJECTOR_DELTA_P_MODE_FRACTION_OF_PC,
@@ -219,6 +240,8 @@ def validate_config(config):
         raise ValueError("Relative tolerance must be positive.")
     if not 0.0 < config["simulation"]["stop_when_tank_quality_exceeds"] <= 1.0:
         raise ValueError("Tank quality cutoff must be in the interval (0, 1].")
+    if config["simulation"]["oxidizer_depletion_policy"] not in {"usable_reserve_or_quality", "burn_time_only"}:
+        raise ValueError("Unsupported oxidizer depletion policy.")
 
 
 def estimate_total_steps(config):

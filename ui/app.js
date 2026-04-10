@@ -4,11 +4,13 @@ const state = {
   defaults: null,
   results: null,
   blowdownPreview: null,
+  lastStatus: null,
   pollTimer: null,
   previewTimer: null,
   renderedJobId: null,
   renderedResultKey: null,
   lastStatusKey: null,
+  statusStacktraceVisible: false,
   downloadUrls: [],
   chartConfigs: {},
   activeMetric: null,
@@ -221,6 +223,16 @@ function fmt(value, digits = 2) {
   }
   const text = Number(value).toFixed(digits);
   return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+}
+
+function normalizeChartPoints(points) {
+  return (points || [])
+    .map((point) => ({
+      x: Number(point?.x),
+      y: Number(point?.y),
+    }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .sort((left, right) => left.x - right.x);
 }
 
 function escapeHtml(value) {
@@ -551,6 +563,77 @@ function setFormBusy(isBusy, isStopping = false) {
   updateBlowdownButtonState(isBusy);
 }
 
+function hasStoredStatusTraceback(status) {
+  return Boolean(status?.traceback);
+}
+
+function canFetchLiveStacktrace(status) {
+  return Boolean(status && (status.status === "running" || status.status === "stopping"));
+}
+
+function hideStatusStacktrace() {
+  state.statusStacktraceVisible = false;
+  $("sweepStacktraceText").classList.add("hidden");
+  $("sweepStacktraceText").textContent = "";
+  $("sweepStacktraceToggle").textContent = "Show Stacktrace";
+  $("sweepStacktraceRefresh").classList.add("hidden");
+}
+
+function updateStatusStacktraceControls(status) {
+  const controls = $("sweepStacktraceControls");
+  const toggle = $("sweepStacktraceToggle");
+  const refresh = $("sweepStacktraceRefresh");
+  const canInspect = canFetchLiveStacktrace(status) || hasStoredStatusTraceback(status);
+
+  controls.classList.toggle("hidden", !canInspect);
+  if (!canInspect) {
+    hideStatusStacktrace();
+    return;
+  }
+
+  toggle.textContent = state.statusStacktraceVisible ? "Hide Stacktrace" : "Show Stacktrace";
+  refresh.classList.toggle("hidden", !(state.statusStacktraceVisible && canFetchLiveStacktrace(status)));
+
+  if (!canFetchLiveStacktrace(status) && hasStoredStatusTraceback(status) && status.traceback && state.statusStacktraceVisible) {
+    $("sweepStacktraceText").textContent = status.traceback;
+    $("sweepStacktraceText").classList.remove("hidden");
+  }
+}
+
+async function refreshStatusStacktrace() {
+  const status = state.lastStatus;
+  if (!status) {
+    return;
+  }
+  const textNode = $("sweepStacktraceText");
+  textNode.classList.remove("hidden");
+  textNode.textContent = "Loading stacktrace...";
+
+  if (canFetchLiveStacktrace(status)) {
+    const payload = await requestJson("/api/job-stacktrace");
+    textNode.textContent = payload.traceback || payload.error || "No live stacktrace is available.";
+    return;
+  }
+
+  textNode.textContent = status.traceback || "No stored traceback is available.";
+}
+
+async function toggleStatusStacktrace() {
+  const status = state.lastStatus;
+  if (!status) {
+    return;
+  }
+  state.statusStacktraceVisible = !state.statusStacktraceVisible;
+  if (!state.statusStacktraceVisible) {
+    hideStatusStacktrace();
+    updateStatusStacktraceControls(status);
+    return;
+  }
+  $("sweepStacktraceText").classList.remove("hidden");
+  updateStatusStacktraceControls(status);
+  await refreshStatusStacktrace();
+}
+
 function showSweepStatus(status) {
   const panel = $("sweepStatus");
   const spinner = $("sweepSpinner");
@@ -558,13 +641,29 @@ function showSweepStatus(status) {
   const text = $("sweepStatusText");
   const percent = $("sweepStatusPercent");
   const bar = $("sweepProgressBar");
-  const progressRatio = Math.max(0, Math.min(1, Number(status.progress_ratio || 0)));
+  const completed = Math.max(0, Number(status.progress_completed || 0));
+  const total = Math.max(0, Number(status.progress_total || 0));
+  const ratioFromCounts = total > 0 ? completed / total : Number.NaN;
+  const progressRatio = Math.max(
+    0,
+    Math.min(
+      1,
+      Number.isFinite(ratioFromCounts)
+        ? ratioFromCounts
+        : Number(status.progress_ratio || 0),
+    ),
+  );
   const progressPercent = Math.round(progressRatio * 100);
   const isRunning = status.status === "running";
   const isStopping = status.status === "stopping";
+  const displayPercent = (isRunning || isStopping) && total > 0 && completed < total
+    ? Math.min(progressPercent, 99)
+    : progressPercent;
 
   if (status.status === "idle" && !status.result) {
     panel.classList.add("hidden");
+    hideStatusStacktrace();
+    $("sweepStacktraceControls").classList.add("hidden");
     setFormBusy(false, false);
     return;
   }
@@ -584,9 +683,10 @@ function showSweepStatus(status) {
     idle: "Ready to run",
   }[status.status] || "Sweep status";
   text.textContent = status.error || status.message || "No sweep is active.";
-  percent.textContent = `${progressPercent}%`;
-  bar.style.width = `${progressPercent}%`;
+  percent.textContent = `${displayPercent}%`;
+  bar.style.width = `${displayPercent}%`;
   setFormBusy(isRunning || isStopping, isStopping);
+  updateStatusStacktraceControls(status);
 }
 
 function closeModal() {
@@ -981,7 +1081,7 @@ function createLineChartConfig(series, options) {
     series: series.map((item, index) => ({
       label: item.label,
       color: palette[index % palette.length],
-      points: item.points.slice().sort((a, b) => a.x - b.x),
+      points: normalizeChartPoints(item.points),
     })),
   };
 }
@@ -1457,6 +1557,18 @@ function renderTextListSection(title, items) {
   `;
 }
 
+function renderTracebackSection(title, tracebackText) {
+  if (!tracebackText) {
+    return "";
+  }
+  return `
+    <section class="best-isp-section">
+      <h4>${escapeHtml(title)}</h4>
+      <pre class="stacktrace-block">${escapeHtml(tracebackText)}</pre>
+    </section>
+  `;
+}
+
 function formatCaseField(key, value) {
   if (typeof value === "boolean") {
     return value ? "Yes" : "No";
@@ -1768,6 +1880,7 @@ function renderBlowdownOutput(results) {
         <p class="best-isp-note">${escapeHtml(item.error ? `${item.message} ${item.error}` : item.message)}</p>
         ${renderBestIspSection("Blowdown Settings", controlCards)}
         ${renderBestIspSection("CEA Seed Case", seedCards)}
+        ${renderTracebackSection("Stacktrace", item.traceback)}
       </article>
     `;
     clearBlowdownCharts(item.message || "Run the 0D blowdown model to populate this chart.");
@@ -1788,9 +1901,12 @@ function renderBlowdownOutput(results) {
       ${renderBestIspSection("Simulation Summary", summaryCards)}
       ${renderBestIspSection("Seeded 0D Design Inputs", derivedCards)}
       ${renderBestIspSection("Preliminary Injector and Feed Estimates", injectorEstimateCards)}
+      ${renderTextListSection("Geometry Warnings", item.geometry_warnings || [])}
+      ${renderTextListSection("Geometry Suggestions", item.geometry_suggestions || [])}
       ${renderBestIspSection("Override Sources", overrideCards)}
       ${renderBestIspSection("Initial 0D State", initialStateCards)}
       ${renderBestIspSection("Final 0D State", finalStateCards)}
+      ${renderTracebackSection("Stacktrace", item.traceback)}
       ${renderBestIspSection("Blowdown Settings", controlCards)}
       ${renderBestIspSection("CEA Seed Case", seedCards)}
     </article>
@@ -2007,9 +2123,24 @@ function renderResults(results) {
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, { cache: "no-store", ...options });
-  const payload = await response.json();
+  const text = await response.text();
+  let payload = {};
+
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch (error) {
+      const snippet = text.slice(0, 240).replace(/\s+/g, " ").trim();
+      throw new Error(
+        snippet
+          ? `Invalid JSON from ${url}: ${error.message}. Response starts with: ${snippet}`
+          : `Invalid JSON from ${url}: ${error.message}.`,
+      );
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(payload.error || "Request failed.");
+    throw new Error(payload.error || `Request failed (${response.status}).`);
   }
   return payload;
 }
@@ -2039,7 +2170,15 @@ function handleStatus(status) {
   const previousKey = state.lastStatusKey;
   const currentKey = `${status.job_id}:${status.status}`;
   state.lastStatusKey = currentKey;
+  state.lastStatus = status;
   showSweepStatus(status);
+
+  if ((status.status === "error" || hasStoredStatusTraceback(status)) && status.traceback) {
+    state.statusStacktraceVisible = true;
+    $("sweepStacktraceText").classList.remove("hidden");
+    $("sweepStacktraceText").textContent = status.traceback;
+    updateStatusStacktraceControls(status);
+  }
 
   const resultKey = status.result
     ? `${status.job_id}:${status.status}:${status.phase || ""}:${status.result?.blowdown?.status || "none"}`
@@ -2142,6 +2281,20 @@ async function bootstrap() {
   attachFieldLabelTooltips();
   $("sweepForm").addEventListener("submit", onSweepSubmit);
   $("runBlowdownButton").addEventListener("click", onBlowdownRun);
+  $("sweepStacktraceToggle").addEventListener("click", async () => {
+    try {
+      await toggleStatusStacktrace();
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("sweepStacktraceRefresh").addEventListener("click", async () => {
+    try {
+      await refreshStatusStacktrace();
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
   $("themeToggle").addEventListener("click", toggleTheme);
   $("ae_at_custom_enabled").addEventListener("change", updateAdvancedControls);
   $("ae_at_cap_mode").addEventListener("change", updateAdvancedControls);

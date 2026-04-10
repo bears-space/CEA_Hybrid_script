@@ -30,7 +30,10 @@
         "line_id_m": 0.012,
         "line_length_m": 1.2,
         "friction_factor": 0.02,
-        "minor_loss_k_total": 8.0
+        "minor_loss_k_total": 8.0,
+        "loss_model": "hydraulic_lumped_k",
+        "pressure_drop_multiplier": 1.0,
+        "manual_delta_p_pa": 100000.0
       },
       "injector": {
         "cd": 0.8,
@@ -38,6 +41,8 @@
         "total_area_m2": 7.5e-05,
         "override_total_area": false,
         "pressure_drop_policy": "nominal",
+        "sizing_condition": "nominal_initial",
+        "minimum_dp_over_pc": 0.15,
         "delta_p_mode": "fraction_of_pc",
         "delta_p_pa": 600000.0,
         "delta_p_fraction_of_pc": 0.2
@@ -65,7 +70,9 @@
         "max_inner_iterations": 80,
         "relaxation": 0.35,
         "relative_tolerance": 1.0e-06,
-        "stop_when_tank_quality_exceeds": 0.95
+        "stop_when_tank_quality_exceeds": 0.95,
+        "oxidizer_depletion_policy": "usable_reserve_or_quality",
+        "stop_on_quality_limit": true
       }
     },
     "sweeps": {
@@ -126,22 +133,27 @@
           "initial_fill_fraction": 0.8,
           "override_mass_volume": false
         },
-        "feed": {
-          "line_id_m": 0.012,
-          "line_length_m": 1.2,
-          "friction_factor": 0.02,
-          "minor_loss_k_total": 8.0
-        },
-        "injector": {
-          "cd": 0.8,
-          "hole_count": 24,
-          "total_area_m2": 7.5e-05,
-          "override_total_area": false,
-          "pressure_drop_policy": "nominal",
-          "delta_p_mode": "fraction_of_pc",
-          "delta_p_pa": 600000.0,
-          "delta_p_fraction_of_pc": 0.2
-        },
+      "feed": {
+        "line_id_m": 0.012,
+        "line_length_m": 1.2,
+        "friction_factor": 0.02,
+        "minor_loss_k_total": 8.0,
+        "loss_model": "hydraulic_lumped_k",
+        "pressure_drop_multiplier": 1.0,
+        "manual_delta_p_pa": 100000.0
+      },
+      "injector": {
+        "cd": 0.8,
+        "hole_count": 24,
+        "total_area_m2": 7.5e-05,
+        "override_total_area": false,
+        "pressure_drop_policy": "nominal",
+        "sizing_condition": "nominal_initial",
+        "minimum_dp_over_pc": 0.15,
+        "delta_p_mode": "fraction_of_pc",
+        "delta_p_pa": 600000.0,
+        "delta_p_fraction_of_pc": 0.2
+      },
         "grain": {
           "abs_density_kg_m3": 1050.0,
           "paraffin_density_kg_m3": 930.0,
@@ -158,15 +170,17 @@
           "override_grain_length": false,
           "override_outer_radius": false
         },
-        "simulation": {
-          "dt_s": 0.02,
-          "burn_time_s": 5.0,
-          "ambient_pressure_pa": 101325.0,
-          "max_inner_iterations": 80,
-          "relaxation": 0.35,
-          "relative_tolerance": 1.0e-06,
-          "stop_when_tank_quality_exceeds": 0.95
-        }
+      "simulation": {
+        "dt_s": 0.02,
+        "burn_time_s": 5.0,
+        "ambient_pressure_pa": 101325.0,
+        "max_inner_iterations": 80,
+        "relaxation": 0.35,
+        "relative_tolerance": 1.0e-06,
+        "stop_when_tank_quality_exceeds": 0.95,
+        "oxidizer_depletion_policy": "usable_reserve_or_quality",
+        "stop_on_quality_limit": true
+      }
       },
       "loss_factors": {
         "cstar_efficiency": 1.0,
@@ -174,6 +188,36 @@
         "line_loss_multiplier": 1.0,
         "nozzle_discharge_factor": 1.0
       }
+    },
+    "performance_lookup": {
+      "enabled": true,
+      "of_padding": 2.0,
+      "sample_count": 9,
+      "fallback_to_seed_on_failure": true
+    },
+    "ballistics_1d": {
+      "solver_mode": "1d",
+      "axial_cell_count": 31,
+      "time_step_s": 0.01,
+      "max_simulation_time_s": 5.0,
+      "ambient_pressure_pa": 101325.0,
+      "prechamber_model_mode": "lumped_volume",
+      "postchamber_model_mode": "lumped_volume",
+      "performance_lookup_mode": "cea_table",
+      "regression_model_mode": "power_law",
+      "geometry_input_source": "auto",
+      "geometry_path": "output/geometry/baseline_geometry.json",
+      "auto_freeze_geometry_if_missing": true,
+      "record_every_n_steps": 1,
+      "station_sample_count": 3,
+      "compare_to_0d": true,
+      "axial_correction_mode": "showerhead_head_end_bias",
+      "axial_head_end_bias_strength": 0.15,
+      "axial_bias_decay_fraction": 0.35,
+      "max_port_growth_fraction_per_step": 0.5,
+      "max_pressure_iterations": 80,
+      "pressure_relaxation": 0.35,
+      "pressure_relative_tolerance": 1.0e-06
     },
     "uncertainty": {
       "tank_temperature_k": {"mode": "absolute", "value": 5.0},
@@ -213,6 +257,9 @@
       "injector_plate_thickness_m": 0.008,
       "chamber_wall_thickness_guess_m": 0.004,
       "min_radial_web_m": 0.003,
+      "min_burnout_web_m": 0.001,
+      "max_port_to_outer_radius_ratio": 0.92,
+      "max_grain_slenderness_ratio": 15.0,
       "min_nozzle_area_ratio": 1.0,
       "max_nozzle_area_ratio": 40.0,
       "min_chamber_to_throat_diameter_ratio": 1.5,

@@ -80,16 +80,28 @@ CASE_VARIABLES = [
     ),
     ResultVariable(
         "cf",
-        "Thrust Coefficient [-]",
+        "Reference Thrust Coefficient [-]",
         "cea",
-        "CEA nozzle-exit thrust coefficient.",
+        "Legacy compatibility field for the reference thrust coefficient at the selected CEA condition.",
         True,
     ),
     ResultVariable(
+        "cf_sea_level",
+        "Sea-Level Cf [-]",
+        "sizing",
+        "Actual sea-level thrust coefficient used by the unified nozzle bookkeeping.",
+    ),
+    ResultVariable(
+        "cf_vac",
+        "Vacuum Cf [-]",
+        "sizing",
+        "Vacuum thrust coefficient used by the unified nozzle bookkeeping.",
+    ),
+    ResultVariable(
         "isp_mps",
-        "Isp [m/s]",
+        "Sea-Level Isp [m/s]",
         "cea",
-        "CEA nozzle-exit specific impulse.",
+        "CEA sea-level-equivalent effective exhaust velocity.",
     ),
     ResultVariable(
         "isp_vac_mps",
@@ -157,10 +169,16 @@ CASE_VARIABLES = [
     ),
     ResultVariable(
         "isp_s",
-        "Isp [s]",
+        "Sea-Level Isp [s]",
         "sizing",
-        "CEA specific impulse converted from m/s to seconds.",
+        "CEA sea-level-equivalent specific impulse converted from m/s to seconds.",
         True,
+    ),
+    ResultVariable(
+        "isp_sl_s",
+        "Sea-Level Isp [s]",
+        "sizing",
+        "Explicit staged label for sea-level specific impulse.",
     ),
     ResultVariable(
         "isp_vac_s",
@@ -192,10 +210,28 @@ CASE_VARIABLES = [
     ),
     ResultVariable(
         "thrust_sl_n",
-        "Actual Sea-Level Thrust [N]",
+        "Sea-Level Thrust [N]",
         "sizing",
-        "Estimated sea-level thrust after applying the standard sea-level ambient-pressure correction to the sized nozzle exit area.",
+        "Compatibility alias for the actual sea-level thrust of the sized nozzle.",
         True,
+    ),
+    ResultVariable(
+        "thrust_sea_level_n",
+        "Sea-Level Thrust [N]",
+        "sizing",
+        "Actual sea-level thrust from the unified nozzle bookkeeping.",
+    ),
+    ResultVariable(
+        "thrust_vac_n",
+        "Vacuum Thrust [N]",
+        "sizing",
+        "Vacuum thrust from the unified nozzle bookkeeping.",
+    ),
+    ResultVariable(
+        "thrust_ideal_vac_n",
+        "Ideal Vacuum Thrust [N]",
+        "sizing",
+        "Current ideal-vacuum thrust placeholder. This matches vacuum thrust until a separate loss model is introduced.",
     ),
     ResultVariable(
         "dt_mm",

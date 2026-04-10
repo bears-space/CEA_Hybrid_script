@@ -23,6 +23,8 @@ class GeometryFreezeSmokeTests(unittest.TestCase):
         }
         config["corner_cases"] = {}
         config["geometry_policy"]["min_radial_web_m"] = 0.0
+        config["geometry_policy"]["max_port_to_outer_radius_ratio"] = 1.0
+        config["geometry_policy"]["max_grain_slenderness_ratio"] = 100.0
         config["geometry_policy"]["require_corner_constraints_pass"] = False
         return config
 
@@ -62,4 +64,3 @@ class GeometryFreezeSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

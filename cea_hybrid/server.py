@@ -1,12 +1,16 @@
 """HTTP server and background analysis job state for the browser UI."""
 
 import json
+import math
 import os
+import sys
 import threading
 import time
+import traceback
 from copy import deepcopy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from numbers import Integral, Real
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -45,29 +49,95 @@ SWEEP_JOB = {
     "started_at": None,
     "finished_at": None,
     "error": None,
+    "traceback": None,
     "result": None,
     "thread": None,
     "cancel_event": None,
 }
 
 
+def _json_safe(value):
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    return value
+
+
 def build_job_snapshot(include_result=True):
     with JOB_LOCK:
+        progress_completed = int(SWEEP_JOB["progress_completed"])
+        progress_total = int(SWEEP_JOB["progress_total"])
+        progress_ratio = 0.0 if progress_total <= 0 else max(0.0, min(1.0, progress_completed / progress_total))
         snapshot = {
             "job_id": SWEEP_JOB["job_id"],
             "status": SWEEP_JOB["status"],
             "job_type": SWEEP_JOB["job_type"],
             "phase": SWEEP_JOB["phase"],
             "message": SWEEP_JOB["message"],
-            "progress_completed": SWEEP_JOB["progress_completed"],
-            "progress_total": SWEEP_JOB["progress_total"],
-            "progress_ratio": SWEEP_JOB["progress_ratio"],
+            "progress_completed": progress_completed,
+            "progress_total": progress_total,
+            "progress_ratio": progress_ratio,
             "started_at": SWEEP_JOB["started_at"],
             "finished_at": SWEEP_JOB["finished_at"],
             "error": SWEEP_JOB["error"],
+            "traceback": SWEEP_JOB["traceback"],
         }
         if include_result and SWEEP_JOB["result"] is not None:
             snapshot["result"] = SWEEP_JOB["result"]
+    return snapshot
+
+
+def _format_live_thread_traceback(worker: threading.Thread | None) -> str | None:
+    if worker is None or worker.ident is None:
+        return None
+    frame = sys._current_frames().get(worker.ident)
+    if frame is None:
+        return None
+    header = f"Live stacktrace for worker thread {worker.name} (id={worker.ident})\n"
+    return header + "".join(traceback.format_stack(frame))
+
+
+def build_job_traceback_snapshot() -> dict:
+    with JOB_LOCK:
+        status = SWEEP_JOB["status"]
+        worker = SWEEP_JOB["thread"]
+        stored_traceback = SWEEP_JOB["traceback"]
+        snapshot = {
+            "job_id": SWEEP_JOB["job_id"],
+            "status": status,
+            "job_type": SWEEP_JOB["job_type"],
+            "phase": SWEEP_JOB["phase"],
+        }
+
+    if status in {"running", "stopping"}:
+        live_traceback = _format_live_thread_traceback(worker)
+        if live_traceback:
+            with JOB_LOCK:
+                if SWEEP_JOB["status"] in {"running", "stopping"}:
+                    SWEEP_JOB["traceback"] = live_traceback
+            snapshot["source"] = "live_thread"
+            snapshot["traceback"] = live_traceback
+            snapshot["error"] = None
+            return snapshot
+
+        snapshot["source"] = "cached_live_thread"
+        snapshot["traceback"] = stored_traceback
+        snapshot["error"] = None if stored_traceback else "No live or cached worker stacktrace is available."
+        return snapshot
+
+    snapshot["source"] = "stored_exception"
+    snapshot["traceback"] = stored_traceback
+    snapshot["error"] = None if stored_traceback else "No stored traceback is available for the last job."
     return snapshot
 
 
@@ -82,7 +152,16 @@ def _set_progress(job_id, completed, total, phase, message):
         SWEEP_JOB["message"] = message
 
 
-def _finish_job(job_id, status, message, result=None, error=None, progress_completed=None, progress_total=None):
+def _finish_job(
+    job_id,
+    status,
+    message,
+    result=None,
+    error=None,
+    progress_completed=None,
+    progress_total=None,
+    traceback_text=None,
+):
     with JOB_LOCK:
         if SWEEP_JOB["job_id"] != job_id:
             return
@@ -99,6 +178,7 @@ def _finish_job(job_id, status, message, result=None, error=None, progress_compl
         SWEEP_JOB["message"] = message
         SWEEP_JOB["finished_at"] = time.time()
         SWEEP_JOB["error"] = error
+        SWEEP_JOB["traceback"] = traceback_text
         SWEEP_JOB["result"] = result
         SWEEP_JOB["thread"] = None
         SWEEP_JOB["cancel_event"] = None
@@ -186,8 +266,14 @@ def run_sweep_job(job_id, cea_config, blowdown_config, cancel_event):
             )
         _finish_job(job_id, "cancelled", "Analysis cancelled.", result=response)
     except Exception as exc:
+        traceback_text = traceback.format_exc()
         if response is not None and seed_case is not None:
-            response["blowdown"] = build_blowdown_error_response(blowdown_config, seed_case, str(exc))
+            response["blowdown"] = build_blowdown_error_response(
+                blowdown_config,
+                seed_case,
+                str(exc),
+                traceback_text=traceback_text,
+            )
             _finish_job(
                 job_id,
                 "completed",
@@ -195,9 +281,10 @@ def run_sweep_job(job_id, cea_config, blowdown_config, cancel_event):
                 result=response,
                 progress_completed=sweep_total,
                 progress_total=total_progress,
+                traceback_text=traceback_text,
             )
             return
-        _finish_job(job_id, "error", "CEA sweep failed.", error=str(exc))
+        _finish_job(job_id, "error", "CEA sweep failed.", error=str(exc), traceback_text=traceback_text)
 
 
 def run_blowdown_job(job_id, blowdown_config, seed_case, base_result, cancel_event):
@@ -242,8 +329,21 @@ def run_blowdown_job(job_id, blowdown_config, seed_case, base_result, cancel_eve
         )
         _finish_job(job_id, "cancelled", "Preliminary 0D blowdown cancelled.", result=result)
     except Exception as exc:
-        result["blowdown"] = build_blowdown_error_response(blowdown_config, seed_case, str(exc))
-        _finish_job(job_id, "error", "Preliminary 0D blowdown failed.", result=result, error=str(exc))
+        traceback_text = traceback.format_exc()
+        result["blowdown"] = build_blowdown_error_response(
+            blowdown_config,
+            seed_case,
+            str(exc),
+            traceback_text=traceback_text,
+        )
+        _finish_job(
+            job_id,
+            "error",
+            "Preliminary 0D blowdown failed.",
+            result=result,
+            error=str(exc),
+            traceback_text=traceback_text,
+        )
 
 
 def start_sweep_job(payload):
@@ -270,6 +370,7 @@ def start_sweep_job(payload):
         SWEEP_JOB["started_at"] = time.time()
         SWEEP_JOB["finished_at"] = None
         SWEEP_JOB["error"] = None
+        SWEEP_JOB["traceback"] = None
         SWEEP_JOB["result"] = None
         SWEEP_JOB["cancel_event"] = cancel_event
         worker = threading.Thread(
@@ -310,6 +411,7 @@ def start_blowdown_job(payload):
         SWEEP_JOB["started_at"] = time.time()
         SWEEP_JOB["finished_at"] = None
         SWEEP_JOB["error"] = None
+        SWEEP_JOB["traceback"] = None
         SWEEP_JOB["result"] = base_result
         SWEEP_JOB["cancel_event"] = cancel_event
         worker = threading.Thread(
@@ -397,6 +499,9 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         if route == "/api/sweep-status":
             self._write_json(build_job_snapshot(include_result=True))
             return
+        if route == "/api/job-stacktrace":
+            self._write_json(build_job_traceback_snapshot())
+            return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self):
@@ -448,7 +553,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             return
 
     def _write_json(self, payload, status=HTTPStatus.OK):
-        data = json.dumps(payload).encode("utf-8")
+        data = json.dumps(_json_safe(payload), allow_nan=False).encode("utf-8")
         try:
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")

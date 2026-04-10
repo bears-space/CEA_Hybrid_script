@@ -8,6 +8,7 @@ SENSITIVITY_DIRNAME = "sensitivity"
 CORNERS_DIRNAME = "corners"
 CEA_DIRNAME = "cea"
 GEOMETRY_DIRNAME = "geometry"
+BALLISTICS_1D_DIRNAME = "ballistics_1d"
 
 DEFAULT_SENSITIVITY_METRICS = [
     "pc_avg_bar",

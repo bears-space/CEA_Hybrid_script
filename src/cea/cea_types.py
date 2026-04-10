@@ -22,8 +22,11 @@ class CEAPerformancePoint:
     target_thrust_n: float
     cstar_mps: float
     isp_s: float
+    isp_sl_s: float
     isp_vac_s: float
     cf: float
+    cf_sea_level: float
+    cf_vac: float
     gamma_e: float
     molecular_weight_exit: float
     chamber_temperature_k: float
@@ -31,6 +34,8 @@ class CEAPerformancePoint:
     exit_temperature_k: float
     throat_area_m2: float
     exit_area_m2: float
+    thrust_sea_level_n: float
+    thrust_vac_n: float
     raw: dict[str, Any] = field(default_factory=dict)
 
 

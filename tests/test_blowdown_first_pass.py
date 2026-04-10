@@ -1,6 +1,10 @@
 import math
+import json
 import unittest
 
+import numpy as np
+
+from cea_hybrid.server import _json_safe
 from blowdown_hybrid.calculations import build_runtime_inputs
 from blowdown_hybrid.config import (
     build_config,
@@ -30,7 +34,8 @@ from blowdown_hybrid.first_pass import (
     total_mass_flow_from_thrust,
 )
 from blowdown_hybrid.thermo import initial_tank_state_from_temperature
-from blowdown_hybrid.ui_backend import build_config_from_payload
+from blowdown_hybrid.ui_backend import _points, build_config_from_payload, build_default_ui_config
+from blowdown_hybrid.solver import simulate
 
 
 class FirstPassEquationTests(unittest.TestCase):
@@ -252,6 +257,22 @@ class ManualOverrideRuntimeTests(unittest.TestCase):
         self.assertAlmostEqual(fraction, 0.2)
         self.assertEqual(source, "policy:nominal")
 
+    def test_manual_feed_loss_model_is_explicit_in_runtime_outputs(self):
+        runtime = build_runtime_inputs(
+            {
+                "ui_mode": "advanced",
+                "feed": {
+                    "loss_model": "manual_override",
+                    "manual_delta_p_pa": 2.5e5,
+                },
+            },
+            self.seed_case,
+        )
+
+        self.assertEqual(runtime["derived"]["feed_loss_model"], "manual_override")
+        self.assertEqual(runtime["derived"]["feed_loss_source"], "manual_override")
+        self.assertAlmostEqual(runtime["derived"]["feed_manual_delta_p_bar"], 2.5)
+
     def test_invalid_fill_fraction_validation(self):
         with self.assertRaisesRegex(ValueError, "Initial fill fraction"):
             build_config({"tank": {"initial_fill_fraction": 1.0}})
@@ -322,6 +343,94 @@ class ManualOverrideRuntimeTests(unittest.TestCase):
         )
 
         self.assertAlmostEqual(config["tank"]["initial_temp_k"], 287.5)
+
+
+class UiPayloadSafetyTests(unittest.TestCase):
+    def test_chart_points_drop_non_finite_values(self):
+        points = _points(
+            [0.0, 1.0, 2.0, 3.0],
+            [4.0, float("inf"), float("nan"), 7.0],
+        )
+
+        self.assertEqual(
+            points,
+            [
+                {"x": 0.0, "y": 4.0},
+                {"x": 3.0, "y": 7.0},
+            ],
+        )
+
+    def test_json_safe_replaces_non_finite_numbers_before_serialization(self):
+        payload = {
+            "progress_ratio": float("nan"),
+            "result": {
+                "charts": [
+                    {"x": 0.0, "y": float("inf")},
+                    {"x": 1.0, "y": 2.0},
+                ],
+            },
+        }
+
+        encoded = json.dumps(_json_safe(payload), allow_nan=False)
+        decoded = json.loads(encoded)
+
+        self.assertIsNone(decoded["progress_ratio"])
+        self.assertIsNone(decoded["result"]["charts"][0]["y"])
+        self.assertEqual(decoded["result"]["charts"][1]["y"], 2.0)
+
+
+class CoupledSolverRegressionTests(unittest.TestCase):
+    def test_default_ui_case_stays_physically_consistent_through_late_burn(self):
+        seed_case = {
+            "target_thrust_n": 4000.0,
+            "of": 6.90909090909091,
+            "isp_s": 250.48240770627382,
+            "pc_bar": 30.0,
+            "oxidizer_temp_k": 293.15,
+            "fuel_temp_k": 293.15,
+            "abs_vol_frac": 0.1,
+            "cstar_mps": 1654.299656205319,
+            "cf": 1.485712790105902,
+            "at_m2": 0.0008974368008491689,
+            "ae_m2": 0.004397441221597727,
+            "pe_bar": 1.0079881238021096,
+            "gamma_e": 1.234280629453023,
+            "mw_e": 26.616309522013697,
+            "mdot_total_kg_s": 1.6274623478573447,
+            "thrust_sl_n": 3997.687613028436,
+            "thrust_vac_n": 4443.258344806825,
+            "isp_vac_s": 278.4004544629961,
+            "cf_vac": 1.65035143815607,
+        }
+        payload = build_default_ui_config({})
+        payload["oxidizer_temperature_k"] = seed_case["oxidizer_temp_k"]
+        config = build_config_from_payload(payload)
+        runtime = build_runtime_inputs(config, seed_case, include_performance_lookup=True)
+
+        simulation = simulate(
+            tank_cfg=runtime["tank"],
+            feed_cfg=runtime["feed"],
+            injector_cfg=runtime["injector"],
+            grain_cfg=runtime["grain"],
+            nozzle_cfg=runtime["nozzle"],
+            sim_cfg=runtime["simulation"],
+            initial_mdot_ox_guess_kg_s=runtime["derived"]["target_mdot_ox_kg_s"],
+            initial_pc_guess_pa=runtime["design_point"].chamber_pressure_pa,
+        )
+        history = simulation["history"]
+
+        self.assertEqual(simulation["stop_reason"], "tank_quality_limit_exceeded")
+        self.assertTrue(np.all(history["pc_pa"] <= history["p_inj_in_pa"] + 10.0))
+        self.assertTrue(np.all(history["dp_inj_pa"] >= -10.0))
+        self.assertGreater(float(np.min(history["mdot_total_kg_s"])), 1.2)
+        self.assertLess(float(np.max(history["thrust_actual_n"])), 4500.0)
+        self.assertGreater(float(history["thrust_actual_n"][-1]), 3000.0)
+        self.assertLess(float(history["thrust_actual_n"][-1]), 3300.0)
+        self.assertGreater(float(history["tank_p_pa"][0] / 1e5), 49.0)
+        self.assertLess(float(history["tank_p_pa"][0] / 1e5), 52.0)
+        self.assertGreater(float(history["tank_p_pa"][-1] / 1e5), 32.0)
+        self.assertLess(float(history["tank_p_pa"][-1] / 1e5), 34.0)
+        self.assertLess(float(np.max(np.abs(np.diff(history["mdot_total_kg_s"][-20:])))), 0.01)
 
 
 if __name__ == "__main__":

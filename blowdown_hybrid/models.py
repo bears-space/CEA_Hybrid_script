@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -11,6 +11,7 @@ class TankConfig:
     volume_m3: float
     initial_mass_kg: float
     initial_temp_k: float
+    reserve_mass_kg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,9 @@ class FeedConfig:
     line_length_m: float
     friction_factor: float
     minor_loss_k_total: float
+    loss_model: str = "hydraulic_lumped_k"
+    pressure_drop_multiplier: float = 1.0
+    manual_delta_p_pa: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,8 @@ class InjectorConfig:
     cd: float
     total_area_m2: float
     hole_count: int
+    minimum_dp_over_pc: float = 0.15
+    sizing_condition: str = "nominal_initial"
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,11 @@ class NozzleConfig:
     exit_area_m2: float
     cstar_mps: float
     cf: float
+    cf_vac: float | None = None
+    exit_pressure_ratio: float | None = None
+    performance_lookup: Any = None
+    gamma_e: float | None = None
+    molecular_weight_exit: float | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +67,8 @@ class SimulationConfig:
     relaxation: float = 0.35
     relative_tolerance: float = 1e-6
     stop_when_tank_quality_exceeds: float = 0.95
+    oxidizer_depletion_policy: str = "usable_reserve_or_quality"
+    stop_on_quality_limit: bool = True
 
 
 @dataclass(frozen=True)
@@ -83,3 +96,4 @@ class State:
     tank_mass_kg: float
     tank_internal_energy_j: float
     port_radius_m: float
+    tank_temperature_hint_k: float | None = None

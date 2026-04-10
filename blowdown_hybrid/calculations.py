@@ -56,6 +56,9 @@ from blowdown_hybrid.thermo import (
     initial_tank_state_from_mass_and_temperature,
     initial_tank_state_from_temperature,
 )
+from src.analysis.geometry_checks import evaluate_grain_geometry
+from src.analysis.pressure_budget import pressure_budget
+from src.models.nozzle import STANDARD_SEA_LEVEL_PRESSURE_PA, cf_vac_from_isp_and_cstar, evaluate_nozzle_performance
 
 
 def select_seed_case(cases):
@@ -66,6 +69,16 @@ def select_seed_case(cases):
 
 def design_point_from_cea_case(case):
     chamber_pressure_pa = float(case["pc_bar"]) * 1e5
+    cf_sea_level = float(case.get("cf_sea_level", case.get("cf_actual", case["cf"])))
+    ae_at = float(case["ae_m2"]) / float(case["at_m2"])
+    cf_vac = float(
+        case.get(
+            "cf_vac",
+            cf_vac_from_isp_and_cstar(case["isp_vac_s"], case["cstar_mps"])
+            if "isp_vac_s" in case
+            else cf_sea_level + (STANDARD_SEA_LEVEL_PRESSURE_PA / chamber_pressure_pa) * ae_at,
+        )
+    )
     design_point = DesignPoint(
         mdot_total_kg_s=float(case["mdot_total_kg_s"]),
         of_ratio=float(case["of"]),
@@ -75,12 +88,52 @@ def design_point_from_cea_case(case):
         throat_area_m2=float(case["at_m2"]),
         exit_area_m2=float(case["ae_m2"]),
         cstar_mps=float(case["cstar_mps"]),
-        cf=float(case["cf"]),
+        cf=cf_sea_level,
+        cf_vac=cf_vac,
+        exit_pressure_ratio=float(case["pe_bar"]) / float(case["pc_bar"]),
+        gamma_e=float(case.get("gamma_e", 0.0)) if case.get("gamma_e") is not None else None,
+        molecular_weight_exit=float(case.get("mw_e", 0.0)) if case.get("mw_e") is not None else None,
     )
     return design_point, nozzle
 
 
-def _build_first_pass_design(config, seed_case):
+def _seed_performance_summary(seed_case, mdot_total_kg_s, chamber_pressure_pa, throat_area_m2, exit_area_m2):
+    cf_sea_level = float(seed_case.get("cf_sea_level", seed_case.get("cf_actual", seed_case["cf"])))
+    ae_at = float(exit_area_m2) / float(throat_area_m2)
+    cf_vac_default = cf_sea_level + (STANDARD_SEA_LEVEL_PRESSURE_PA / float(chamber_pressure_pa)) * ae_at
+    cf_vac = float(
+        seed_case.get(
+            "cf_vac",
+            cf_vac_from_isp_and_cstar(seed_case["isp_vac_s"], seed_case["cstar_mps"])
+            if "isp_vac_s" in seed_case
+            else cf_vac_default,
+        )
+    )
+    nozzle = evaluate_nozzle_performance(
+        cstar_mps=float(seed_case["cstar_mps"]),
+        cf_vac=cf_vac,
+        chamber_pressure_pa=chamber_pressure_pa,
+        throat_area_m2=throat_area_m2,
+        mdot_total_kg_s=mdot_total_kg_s,
+        ambient_pressure_pa=STANDARD_SEA_LEVEL_PRESSURE_PA,
+        exit_area_m2=exit_area_m2,
+        exit_pressure_ratio=float(seed_case.get("pe_bar", seed_case["pc_bar"])) / float(seed_case["pc_bar"]),
+        gamma_e=float(seed_case.get("gamma_e", 0.0)) if seed_case.get("gamma_e") is not None else None,
+        molecular_weight_exit=float(seed_case.get("mw_e", 0.0)) if seed_case.get("mw_e") is not None else None,
+    )
+    return {
+        "cf_sea_level": cf_sea_level,
+        "cf_vac": cf_vac,
+        "cf_ideal": cf_vac,
+        "thrust_sea_level_n": nozzle.thrust_actual_n,
+        "thrust_vac_n": nozzle.thrust_vac_n,
+        "thrust_ideal_vac_n": nozzle.thrust_vac_n,
+        "isp_sea_level_s": nozzle.isp_actual_s,
+        "isp_vac_s": nozzle.isp_vac_s,
+    }
+
+
+def _build_first_pass_design(config, seed_case, *, performance_lookup=None):
     """Return first-pass sizing data and selected override sources before time marching."""
     ui_mode = config["ui_mode"]
     is_advanced = ui_mode == UI_MODE_ADVANCED
@@ -94,7 +147,15 @@ def _build_first_pass_design(config, seed_case):
     fuel_temp_k = float(seed_case["fuel_temp_k"])
     abs_vol_frac = float(seed_case["abs_vol_frac"])
     nozzle_cstar_mps = float(seed_case["cstar_mps"])
-    nozzle_cf = float(seed_case["cf"])
+    seed_performance = _seed_performance_summary(
+        seed_case,
+        mdot_total_kg_s=total_mass_flow_from_thrust(target_thrust_n, isp_s),
+        chamber_pressure_pa=chamber_pressure_pa,
+        throat_area_m2=float(seed_case["at_m2"]),
+        exit_area_m2=float(seed_case["ae_m2"]),
+    )
+    nozzle_cf = seed_performance["cf_sea_level"]
+    nozzle_cf_vac = seed_performance["cf_vac"]
     nozzle_exit_area_m2 = float(seed_case["ae_m2"])
 
     simulation = SimulationConfig(**config["simulation"])
@@ -203,6 +264,17 @@ def _build_first_pass_design(config, seed_case):
     if outer_radius_m is not None and outer_radius_m <= initial_port_radius_m:
         raise ValueError("Outer grain radius must be greater than the initial port radius.")
 
+    geometry_validation = evaluate_grain_geometry(
+        port_radius_initial_m=initial_port_radius_m,
+        grain_outer_radius_m=outer_radius_m,
+        grain_length_m=grain_length_m,
+        port_count=port_count,
+        min_radial_web_m=config.get("geometry_policy", {}).get("min_radial_web_m", 0.003),
+        min_burnout_web_m=config.get("geometry_policy", {}).get("min_burnout_web_m", 0.001),
+        max_port_to_outer_radius_ratio=config.get("geometry_policy", {}).get("max_port_to_outer_radius_ratio", 0.95),
+        max_grain_slenderness_ratio=config.get("geometry_policy", {}).get("max_grain_slenderness_ratio", 18.0),
+    )
+
     if is_advanced:
         injector_delta_p_pa = (
             config["injector"]["delta_p_pa"]
@@ -248,18 +320,27 @@ def _build_first_pass_design(config, seed_case):
         exit_area_m2=throat_area_m2 * ae_at,
         cstar_mps=nozzle_cstar_mps,
         cf=nozzle_cf,
+        cf_vac=nozzle_cf_vac,
+        exit_pressure_ratio=float(seed_case.get("pe_bar", seed_case["pc_bar"])) / float(seed_case["pc_bar"]),
+        performance_lookup=performance_lookup,
+        gamma_e=float(seed_case.get("gamma_e", 0.0)) if seed_case.get("gamma_e") is not None else None,
+        molecular_weight_exit=float(seed_case.get("mw_e", 0.0)) if seed_case.get("mw_e") is not None else None,
     )
 
+    reserve_mass_kg = max(float(tank_initial_mass_kg) * (1.0 - float(usable_oxidizer_fraction)), 0.0)
     tank = TankConfig(
         volume_m3=tank_volume_m3,
         initial_mass_kg=tank_initial_mass_kg,
         initial_temp_k=tank_initial_temp_k,
+        reserve_mass_kg=reserve_mass_kg,
     )
     feed = FeedConfig(**config["feed"])
     injector = InjectorConfig(
         cd=injector_cd,
         total_area_m2=injector_total_area_m2,
         hole_count=injector_hole_count,
+        minimum_dp_over_pc=float(config["injector"]["minimum_dp_over_pc"]),
+        sizing_condition=str(config["injector"]["sizing_condition"]),
     )
     grain = GrainConfig(
         fuel_density_kg_m3=fuel_density_kg_m3,
@@ -280,6 +361,13 @@ def _build_first_pass_design(config, seed_case):
     design_feed_pressure_drop_pa = feed_pressure_drop_pa(mdot_ox_kg_s, tank_init.rho_l_kg_m3, feed)
     design_injector_inlet_pressure_pa = tank_init.p_pa - design_feed_pressure_drop_pa
     design_injector_delta_p_pa = design_injector_inlet_pressure_pa - design_point.chamber_pressure_pa
+    design_pressure_budget = pressure_budget(
+        tank_pressure_pa=tank_init.p_pa,
+        feed_pressure_drop_pa=design_feed_pressure_drop_pa,
+        injector_inlet_pressure_pa=design_injector_inlet_pressure_pa,
+        injector_delta_p_pa=design_injector_delta_p_pa,
+        chamber_pressure_pa=design_point.chamber_pressure_pa,
+    )
 
     return {
         "design_point": design_point,
@@ -295,12 +383,19 @@ def _build_first_pass_design(config, seed_case):
             "ui_mode": ui_mode,
             "seed_target_thrust_n": target_thrust_n,
             "seed_isp_s": isp_s,
+            "seed_isp_sl_s": seed_performance["isp_sea_level_s"],
+            "seed_isp_vac_s": seed_performance["isp_vac_s"],
             "seed_of_ratio": of_ratio,
             "seed_pc_bar": chamber_pressure_pa / 1e5,
             "seed_oxidizer_temp_k": seed_oxidizer_temp_k,
             "seed_fuel_temp_k": fuel_temp_k,
             "seed_abs_volume_fraction": abs_vol_frac,
             "seed_abs_mass_fraction": abs_mass_frac,
+            "seed_cf_sea_level": seed_performance["cf_sea_level"],
+            "seed_cf_vac": seed_performance["cf_vac"],
+            "seed_cstar_mps": nozzle_cstar_mps,
+            "seed_thrust_sea_level_n": seed_performance["thrust_sea_level_n"],
+            "seed_thrust_vac_n": seed_performance["thrust_vac_n"],
             "abs_density_kg_m3": config["grain"]["abs_density_kg_m3"],
             "paraffin_density_kg_m3": config["grain"]["paraffin_density_kg_m3"],
             "target_mdot_total_kg_s": mdot_total_kg_s,
@@ -322,6 +417,7 @@ def _build_first_pass_design(config, seed_case):
             "tank_mass_volume_source": tank_mass_source,
             "tank_volume_source": tank_volume_source,
             "tank_usable_fraction_source": "advanced_manual" if is_advanced else "project_default",
+            "tank_reserve_mass_kg": reserve_mass_kg,
             "tank_oxidizer_liquid_volume_l": oxidizer_liquid_volume_m3 * 1000.0,
             "target_initial_gox_kg_m2_s": target_initial_gox_kg_m2_s,
             "initial_port_area_mm2": initial_port_area_m2 * 1e6,
@@ -345,6 +441,8 @@ def _build_first_pass_design(config, seed_case):
             "injector_hole_count": injector_hole_count,
             "injector_hole_count_source": "advanced_manual" if is_advanced else "project_default",
             "injector_pressure_drop_policy": config["injector"]["pressure_drop_policy"],
+            "injector_sizing_condition": config["injector"]["sizing_condition"],
+            "injector_minimum_dp_over_pc": config["injector"]["minimum_dp_over_pc"],
             "injector_delta_p_mode": injector_delta_p_mode,
             "injector_delta_p_source": injector_delta_p_source,
             "injector_delta_p_fraction_of_pc": config["injector"]["delta_p_fraction_of_pc"],
@@ -357,15 +455,33 @@ def _build_first_pass_design(config, seed_case):
             "feed_line_length_m": feed.line_length_m,
             "feed_friction_factor": feed.friction_factor,
             "feed_minor_loss_k_total": feed.minor_loss_k_total,
+            "feed_loss_model": feed.loss_model,
+            "feed_pressure_drop_multiplier": feed.pressure_drop_multiplier,
+            "feed_manual_delta_p_bar": feed.manual_delta_p_pa / 1e5,
+            "feed_loss_source": "manual_override" if feed.loss_model == "manual_override" else (
+                "hydraulic_lumped_k_calibrated" if abs(feed.pressure_drop_multiplier - 1.0) > 1e-12 else "hydraulic_lumped_k"
+            ),
             "nozzle_throat_area_mm2": nozzle.throat_area_m2 * 1e6,
             "nozzle_exit_area_mm2": nozzle.exit_area_m2 * 1e6,
             "nozzle_cstar_mps": nozzle.cstar_mps,
-            "nozzle_cf": nozzle.cf,
+            "nozzle_cf_sea_level": nozzle.cf,
+            "nozzle_cf_vac": nozzle.cf_vac,
             "design_tank_pressure_bar": tank_init.p_pa / 1e5,
             "design_liquid_density_kg_m3": tank_init.rho_l_kg_m3,
             "design_injector_inlet_pressure_bar": design_injector_inlet_pressure_pa / 1e5,
             "design_feed_pressure_drop_bar": design_feed_pressure_drop_pa / 1e5,
             "design_injector_delta_p_bar": design_injector_delta_p_pa / 1e5,
+            "design_dp_feed_over_pc": design_pressure_budget["dp_feed_over_pc"],
+            "design_dp_injector_over_pc": design_pressure_budget["dp_injector_over_pc"],
+            "design_dp_total_over_ptank": design_pressure_budget["dp_total_over_ptank"],
+            "design_injector_to_feed_dp_ratio": design_pressure_budget["injector_to_feed_dp_ratio"],
+            "design_injector_dominant": design_pressure_budget["injector_delta_p_pa"] >= design_pressure_budget["feed_pressure_drop_pa"],
+            "geometry_valid": geometry_validation["valid"],
+            "geometry_warnings": geometry_validation["warnings"],
+            "geometry_suggestions": geometry_validation["suggestions"],
+            "initial_radial_web_mm": geometry_validation["radial_web_m"] * 1e3,
+            "initial_port_to_outer_radius_ratio": geometry_validation["port_to_outer_radius_ratio"],
+            "grain_slenderness_ratio": geometry_validation["grain_slenderness_ratio"],
             "simulation_burn_time_s": simulation.burn_time_s,
             "simulation_dt_s": simulation.dt_s,
             "simulation_ambient_pressure_bar": simulation.ambient_pressure_pa / 1e5,
@@ -373,6 +489,9 @@ def _build_first_pass_design(config, seed_case):
             "simulation_relaxation": simulation.relaxation,
             "simulation_relative_tolerance": simulation.relative_tolerance,
             "simulation_tank_quality_cutoff": simulation.stop_when_tank_quality_exceeds,
+            "simulation_oxidizer_depletion_policy": simulation.oxidizer_depletion_policy,
+            "simulation_stop_on_quality_limit": simulation.stop_on_quality_limit,
+            "performance_lookup_active": performance_lookup is not None,
             "override_active": is_advanced and any(
                 [
                     config["tank"]["override_mass_volume"],
@@ -383,19 +502,34 @@ def _build_first_pass_design(config, seed_case):
                 ]
             ),
         },
-    }
+}
 
 
-def build_runtime_inputs(config, seed_case):
+def build_runtime_inputs(config, seed_case, *, include_performance_lookup=False, lookup_config=None, raw_cea_config=None):
     config = build_config(config)
-    return {
+    performance_lookup = None
+    performance_lookup_warning = None
+    if include_performance_lookup:
+        from src.simulation.performance_lookup import build_performance_lookup
+
+        try:
+            performance_lookup = build_performance_lookup(seed_case, lookup_config, raw_cea_config)
+        except Exception as exc:
+            if bool((lookup_config or {}).get("fallback_to_seed_on_failure", True)):
+                performance_lookup_warning = str(exc)
+            else:
+                raise
+    runtime = {
         "config": config,
-        **_build_first_pass_design(config, seed_case),
+        **_build_first_pass_design(config, seed_case, performance_lookup=performance_lookup),
     }
+    runtime["derived"]["performance_lookup_warning"] = performance_lookup_warning
+    runtime["derived"]["performance_lookup_active"] = performance_lookup is not None
+    return runtime
 
 
 def run_blowdown(config, seed_case, progress_callback=None, cancel_event=None):
-    runtime = build_runtime_inputs(config, seed_case)
+    runtime = build_runtime_inputs(config, seed_case, include_performance_lookup=True)
     simulation = simulate(
         tank_cfg=runtime["tank"],
         feed_cfg=runtime["feed"],

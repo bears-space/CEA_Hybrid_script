@@ -11,15 +11,21 @@ def line_cross_section_area(line_id_m: float) -> float:
 
 def feed_pressure_drop_pa(mdot_kg_s: float, rho_kg_m3: float, feed: FeedConfig) -> float:
     """
-    Lumped feed loss model:
-        dp = (K_total + f * L / D) * (rho * v^2 / 2)
+    Feed loss model:
+        - hydraulic_lumped_k: dp = multiplier * (K_total + f * L / D) * (rho * v^2 / 2)
+        - manual_override: fixed configured dp
     """
     if mdot_kg_s <= 0.0:
         return 0.0
+    if feed.loss_model == "manual_override":
+        return max(float(feed.manual_delta_p_pa), 0.0)
+    if feed.loss_model != "hydraulic_lumped_k":
+        raise ValueError(f"Unsupported feed loss model: {feed.loss_model}")
     area = line_cross_section_area(feed.line_id_m)
     velocity = mdot_kg_s / (rho_kg_m3 * area)
     loss_factor = feed.minor_loss_k_total + feed.friction_factor * (feed.line_length_m / feed.line_id_m)
-    return 0.5 * rho_kg_m3 * velocity**2 * loss_factor
+    base_dp = 0.5 * rho_kg_m3 * velocity**2 * loss_factor
+    return float(feed.pressure_drop_multiplier) * base_dp
 
 
 def injector_mdot_kg_s(cd: float, total_area_m2: float, rho_kg_m3: float, delta_p_pa: float) -> float:

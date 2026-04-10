@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import traceback
 from typing import Any, Mapping
 
 import numpy as np
 
+from cea_hybrid.defaults import get_default_raw_config
 from blowdown_hybrid.calculations import build_runtime_inputs
 from blowdown_hybrid.solver import simulate
 from blowdown_hybrid.ui_backend import build_config_from_payload
 
+from src.models.nozzle import STANDARD_SEA_LEVEL_PRESSURE_PA, evaluate_nozzle_performance
 from src.sizing.first_pass_sizing import throat_area_from_mass_flow, total_mass_flow_from_thrust
 from src.simulation.stop_conditions import classify_stop_reason
 from src.units import bar_to_pa, pa_to_bar
@@ -34,18 +37,36 @@ def build_seed_case(performance: Mapping[str, Any], loss_factors: Mapping[str, A
     mdot_total_kg_s = total_mass_flow_from_thrust(target_thrust_n, isp_s)
     throat_area_m2 = throat_area_from_mass_flow(mdot_total_kg_s, cstar_mps, bar_to_pa(pc_bar))
     exit_area_m2 = throat_area_m2 * ae_at
+    nozzle = evaluate_nozzle_performance(
+        cstar_mps=cstar_mps,
+        cf_vac=cf + (STANDARD_SEA_LEVEL_PRESSURE_PA / bar_to_pa(pc_bar)) * ae_at,
+        chamber_pressure_pa=bar_to_pa(pc_bar),
+        throat_area_m2=throat_area_m2,
+        mdot_total_kg_s=mdot_total_kg_s,
+        ambient_pressure_pa=STANDARD_SEA_LEVEL_PRESSURE_PA,
+        exit_area_m2=exit_area_m2,
+    )
 
     return {
         "target_thrust_n": target_thrust_n,
-        "thrust_sl_n": target_thrust_n,
+        "thrust_ideal_vac_n": nozzle.thrust_vac_n,
+        "thrust_vac_n": nozzle.thrust_vac_n,
+        "thrust_sea_level_n": nozzle.thrust_actual_n,
+        "thrust_sl_n": nozzle.thrust_actual_n,
         "of": float(performance["of_ratio"]),
         "isp_s": isp_s,
+        "isp_sl_s": nozzle.isp_actual_s,
+        "isp_vac_s": nozzle.isp_vac_s,
         "pc_bar": pc_bar,
         "oxidizer_temp_k": float(performance["tank_temperature_k"]),
         "fuel_temp_k": float(performance["fuel_temperature_k"]),
         "abs_vol_frac": float(performance["abs_volume_fraction"]),
         "cstar_mps": cstar_mps,
         "cf": cf,
+        "cf_actual": nozzle.cf_actual,
+        "cf_sea_level": nozzle.cf_actual,
+        "cf_vac": nozzle.cf_vac,
+        "pe_bar": 0.0,
         "at_m2": throat_area_m2,
         "ae_m2": exit_area_m2,
         "ae_at": ae_at,
@@ -57,11 +78,13 @@ def _build_blowdown_payload(nominal_case_config: Mapping[str, Any]) -> dict[str,
     payload = deepcopy(dict(nominal_case_config["blowdown"]))
     performance = nominal_case_config["performance"]
     loss_factors = nominal_case_config.get("loss_factors", {})
+    payload["geometry_policy"] = deepcopy(dict(nominal_case_config.get("geometry_policy", {})))
     payload.setdefault("tank", {})["initial_temp_k"] = float(performance["tank_temperature_k"])
 
     line_loss_multiplier = float(loss_factors.get("line_loss_multiplier", 1.0))
-    payload.setdefault("feed", {})["friction_factor"] = float(payload["feed"]["friction_factor"]) * line_loss_multiplier
-    payload["feed"]["minor_loss_k_total"] = float(payload["feed"]["minor_loss_k_total"]) * line_loss_multiplier
+    payload.setdefault("feed", {})["pressure_drop_multiplier"] = (
+        float(payload["feed"].get("pressure_drop_multiplier", 1.0)) * line_loss_multiplier
+    )
     return payload
 
 
@@ -95,13 +118,18 @@ def _standardize_history(runtime: dict[str, Any], raw_history: Mapping[str, np.n
         "tank_pressure_bar": np.asarray(raw_history["tank_p_pa"], dtype=float) / 1.0e5,
         "tank_temperature_k": np.asarray(raw_history["tank_T_k"], dtype=float),
         "tank_quality": np.asarray(raw_history["tank_quality"], dtype=float),
+        "tank_mass_kg": np.asarray(raw_history["tank_mass_kg"], dtype=float),
         "oxidizer_mass_remaining_kg": _mass_remaining_history(runtime["tank"].initial_mass_kg, mdot_ox, dt_s),
+        "oxidizer_reserve_mass_kg": np.full_like(mdot_ox, float(runtime["tank"].reserve_mass_kg)),
         "mdot_ox_kg_s": mdot_ox,
         "mdot_f_kg_s": np.asarray(raw_history["mdot_f_kg_s"], dtype=float),
+        "mdot_total_kg_s": np.asarray(raw_history["mdot_total_kg_s"], dtype=float),
         "of_ratio": np.asarray(raw_history["of_ratio"], dtype=float),
         "pc_pa": np.asarray(raw_history["pc_pa"], dtype=float),
         "pc_bar": np.asarray(raw_history["pc_pa"], dtype=float) / 1.0e5,
-        "thrust_n": np.asarray(raw_history["thrust_n"], dtype=float),
+        "thrust_transient_actual_n": np.asarray(raw_history["thrust_actual_n"], dtype=float),
+        "thrust_vac_n": np.asarray(raw_history["thrust_vac_n"], dtype=float),
+        "thrust_n": np.asarray(raw_history["thrust_actual_n"], dtype=float),
         "port_radius_m": port_radius_m,
         "port_radius_mm": port_radius_m * 1000.0,
         "grain_web_remaining_m": grain_web_remaining_m,
@@ -109,10 +137,22 @@ def _standardize_history(runtime: dict[str, Any], raw_history: Mapping[str, np.n
         "injector_inlet_pressure_bar": np.asarray(raw_history["p_inj_in_pa"], dtype=float) / 1.0e5,
         "feed_pressure_drop_bar": np.asarray(raw_history["dp_feed_pa"], dtype=float) / 1.0e5,
         "injector_delta_p_bar": np.asarray(raw_history["dp_inj_pa"], dtype=float) / 1.0e5,
+        "dp_feed_over_pc": np.asarray(raw_history["dp_feed_over_pc"], dtype=float),
+        "dp_injector_over_pc": np.asarray(raw_history["dp_inj_over_pc"], dtype=float),
+        "dp_total_over_ptank": np.asarray(raw_history["dp_total_over_ptank"], dtype=float),
+        "injector_to_feed_dp_ratio": np.asarray(raw_history["injector_to_feed_dp_ratio"], dtype=float),
         "oxidizer_flux_kg_m2_s": np.asarray(raw_history["Gox_kg_m2_s"], dtype=float),
         "regression_rate_m_s": np.asarray(raw_history["rdot_m_s"], dtype=float),
         "regression_rate_mm_s": np.asarray(raw_history["rdot_m_s"], dtype=float) * 1000.0,
-        "isp_s": np.asarray(raw_history["isp_s"], dtype=float),
+        "cstar_effective_mps": np.asarray(raw_history["cstar_mps"], dtype=float),
+        "cf_actual": np.asarray(raw_history["cf_actual"], dtype=float),
+        "cf_vac": np.asarray(raw_history["cf_vac"], dtype=float),
+        "isp_transient_s": np.asarray(raw_history["isp_actual_s"], dtype=float),
+        "isp_vac_s": np.asarray(raw_history["isp_vac_s"], dtype=float),
+        "isp_s": np.asarray(raw_history["isp_actual_s"], dtype=float),
+        "exit_pressure_bar": np.asarray(raw_history["exit_pressure_pa"], dtype=float) / 1.0e5,
+        "gamma_e": np.asarray(raw_history["gamma_e"], dtype=float),
+        "molecular_weight_exit": np.asarray(raw_history["molecular_weight_exit"], dtype=float),
         "integration_time_s": _extend_time_axis(time_s, dt_s),
     }
 
@@ -121,15 +161,35 @@ def build_nominal_case_config(config: Mapping[str, Any]) -> dict[str, Any]:
     return deepcopy(dict(config.get("nominal", config)))
 
 
+def prepare_runtime_case(config: Mapping[str, Any], raw_cea_config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    nominal = build_nominal_case_config(config)
+    seed_case = build_seed_case(nominal["performance"], nominal.get("loss_factors"))
+    blowdown_payload = _build_blowdown_payload(nominal)
+    lookup_config = nominal.get("performance_lookup", {})
+    runtime = build_runtime_inputs(
+        blowdown_payload,
+        seed_case,
+        include_performance_lookup=bool(lookup_config.get("enabled", True)),
+        lookup_config=lookup_config,
+        raw_cea_config=raw_cea_config or get_default_raw_config(),
+    )
+    return {
+        "nominal": nominal,
+        "seed_case": seed_case,
+        "blowdown_payload": blowdown_payload,
+        "runtime": runtime,
+    }
+
+
 def run_0d_case(config: Mapping[str, Any], verbose: bool = False) -> dict[str, Any]:
     del verbose
-    nominal = build_nominal_case_config(config)
     warnings: list[str] = []
 
     try:
-        seed_case = build_seed_case(nominal["performance"], nominal.get("loss_factors"))
-        blowdown_payload = _build_blowdown_payload(nominal)
-        runtime = build_runtime_inputs(blowdown_payload, seed_case)
+        prepared = prepare_runtime_case(config)
+        nominal = prepared["nominal"]
+        seed_case = prepared["seed_case"]
+        runtime = prepared["runtime"]
         simulation = simulate(
             tank_cfg=runtime["tank"],
             feed_cfg=runtime["feed"],
@@ -142,11 +202,16 @@ def run_0d_case(config: Mapping[str, Any], verbose: bool = False) -> dict[str, A
         )
         status, stop_warnings = classify_stop_reason(simulation["stop_reason"])
         warnings.extend(stop_warnings)
+        if runtime["derived"].get("performance_lookup_warning"):
+            warnings.append(f"Dynamic performance lookup fallback: {runtime['derived']['performance_lookup_warning']}")
+        if not runtime["derived"].get("geometry_valid", True):
+            warnings.extend(runtime["derived"].get("geometry_warnings", []))
         history = _standardize_history(runtime, simulation["history"])
         return {
             "status": status,
             "stop_reason": simulation["stop_reason"],
             "warnings": warnings,
+            "traceback": None,
             "history": history,
             "raw_history": simulation["history"],
             "seed_case": seed_case,
@@ -161,10 +226,12 @@ def run_0d_case(config: Mapping[str, Any], verbose: bool = False) -> dict[str, A
         }
     except Exception as exc:
         warnings.append(str(exc))
+        error_traceback = traceback.format_exc()
         return {
             "status": "failed",
             "stop_reason": "solver_failure",
             "warnings": warnings,
+            "traceback": error_traceback,
             "history": {},
             "raw_history": {},
             "seed_case": None,

@@ -53,3 +53,13 @@ class GeometryDefinition:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_mapping(cls, payload: dict[str, Any]) -> "GeometryDefinition":
+        normalized = dict(payload)
+        normalized["source_summary"] = dict(normalized.get("source_summary", {}))
+        normalized["checks"] = dict(normalized.get("checks", {}))
+        normalized["warnings"] = list(normalized.get("warnings", []))
+        normalized["notes"] = list(normalized.get("notes", []))
+        if normalized.get("cea_reference") is not None:
+            normalized["cea_reference"] = dict(normalized["cea_reference"])
+        return cls(**normalized)

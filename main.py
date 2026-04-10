@@ -1,4 +1,4 @@
-"""Workflow entry point for CEA studies and Step 1 0D design analysis."""
+"""Workflow entry point for CEA, 0D design studies, geometry freeze, and Step 3 ballistics."""
 
 from __future__ import annotations
 
@@ -14,13 +14,23 @@ from src.analysis.sensitivity import run_oat_sensitivity
 from src.analysis.summaries import constraint_rows, metrics_to_row
 from src.cea.cea_interface import get_cea_performance_point, load_cea_config, run_cea_case, run_cea_study, write_cea_outputs
 from src.config_schema import build_design_config, load_design_config
-from src.constants import CEA_DIRNAME, CORNERS_DIRNAME, GEOMETRY_DIRNAME, NOMINAL_DIRNAME, OUTPUT_ROOT, SENSITIVITY_DIRNAME
-from src.io_utils import ensure_directory, write_json
+from src.constants import (
+    BALLISTICS_1D_DIRNAME,
+    CEA_DIRNAME,
+    CORNERS_DIRNAME,
+    GEOMETRY_DIRNAME,
+    NOMINAL_DIRNAME,
+    OUTPUT_ROOT,
+    SENSITIVITY_DIRNAME,
+)
+from src.io_utils import ensure_directory, load_json, write_json
+from src.post.ballistics_export import write_ballistics_outputs
 from src.post.csv_export import write_mapping_csv, write_rows_csv
 from src.post.geometry_export import write_geometry_outputs
 from src.post.plotting import write_horizontal_bar_chart, write_line_plot
-from src.simulation.case_runner import run_nominal_case
+from src.simulation.case_runner import run_ballistics_case, run_nominal_case
 from src.sizing.geometry_freeze import freeze_first_pass_geometry
+from src.sizing.geometry_types import GeometryDefinition
 
 
 def _coerce_scalar(value: Any) -> Any:
@@ -217,11 +227,17 @@ def _build_nominal_cea_case_input(study_config: Mapping[str, Any], cea_config: M
     }
 
 
-def _export_geometry_run(study_config: Mapping[str, Any], cea_config_path: str | None, output_root: Path) -> dict[str, Any]:
+def _export_geometry_run(
+    study_config: Mapping[str, Any],
+    cea_config_path: str | None,
+    output_root: Path,
+    *,
+    include_step1_context: bool = True,
+) -> dict[str, Any]:
     output_dir = ensure_directory(output_root / GEOMETRY_DIRNAME)
     nominal_payload = run_nominal_case(study_config)
-    sensitivity_payload = run_oat_sensitivity(study_config)
-    corner_payload = run_corner_cases(study_config)
+    sensitivity_payload = run_oat_sensitivity(study_config) if include_step1_context else None
+    corner_payload = run_corner_cases(study_config) if include_step1_context else None
 
     cea_reference = None
     cea_warning = None
@@ -257,18 +273,27 @@ def _export_geometry_run(study_config: Mapping[str, Any], cea_config_path: str |
         {
             "nominal_metrics": nominal_payload["metrics"],
             "nominal_constraints": nominal_payload["constraints"],
-            "top_sensitivity": {
-                metric: rows[0] if rows else None
-                for metric, rows in sensitivity_payload["rankings"].items()
-            },
-            "corner_cases": [
+            "top_sensitivity": (
                 {
-                    "case_name": item["case_name"],
-                    "metrics": item["metrics"],
-                    "constraints": item["constraints"],
+                    metric: rows[0] if rows else None
+                    for metric, rows in sensitivity_payload["rankings"].items()
                 }
-                for item in corner_payload["corners"]
-            ],
+                if sensitivity_payload is not None
+                else {}
+            ),
+            "corner_cases": (
+                [
+                    {
+                        "case_name": item["case_name"],
+                        "metrics": item["metrics"],
+                        "constraints": item["constraints"],
+                    }
+                    for item in corner_payload["corners"]
+                ]
+                if corner_payload is not None
+                else []
+            ),
+            "step1_context_included": include_step1_context,
         },
     )
     write_geometry_outputs(output_dir, geometry)
@@ -278,9 +303,239 @@ def _export_geometry_run(study_config: Mapping[str, Any], cea_config_path: str |
     }
 
 
+def _load_geometry_definition(path: Path) -> GeometryDefinition:
+    return GeometryDefinition.from_mapping(load_json(path))
+
+
+def _geometry_config_matches(geometry_path: Path, study_config: Mapping[str, Any]) -> bool:
+    config_path = geometry_path.parent / "design_config_used.json"
+    if not config_path.exists():
+        return False
+    try:
+        return load_json(config_path) == dict(study_config)
+    except Exception:
+        return False
+
+
+def _resolve_ballistics_geometry(
+    study_config: Mapping[str, Any],
+    cea_config_path: str | None,
+    output_root: Path,
+) -> tuple[GeometryDefinition, Path]:
+    settings = study_config["ballistics_1d"]
+    if settings["geometry_input_source"] == "freeze_nominal":
+        payload = _export_geometry_run(study_config, cea_config_path, output_root, include_step1_context=False)
+        geometry_path = payload["output_dir"] / "baseline_geometry.json"
+        return payload["geometry"], geometry_path
+
+    configured_path = Path(settings["geometry_path"])
+    candidate_paths = [configured_path]
+    default_output_geometry = output_root / GEOMETRY_DIRNAME / "baseline_geometry.json"
+    if not configured_path.is_absolute():
+        candidate_paths.append(default_output_geometry)
+
+    for candidate in candidate_paths:
+        if candidate.exists() and (
+            settings["geometry_input_source"] == "file" or _geometry_config_matches(candidate, study_config)
+        ):
+            return _load_geometry_definition(candidate), candidate
+
+    if settings["geometry_input_source"] == "file" and not settings["auto_freeze_geometry_if_missing"]:
+        raise FileNotFoundError(f"Frozen geometry file not found: {configured_path}")
+
+    if settings["geometry_input_source"] not in {"auto", "freeze_nominal"} and not settings["auto_freeze_geometry_if_missing"]:
+        raise RuntimeError("Ballistics 1D mode requires an existing frozen geometry or auto-freeze enabled.")
+
+    payload = _export_geometry_run(study_config, cea_config_path, output_root, include_step1_context=False)
+    geometry_path = payload["output_dir"] / "baseline_geometry.json"
+    return payload["geometry"], geometry_path
+
+
+def _sample_station_indices(axial_history: Mapping[str, Any], station_count: int) -> list[int]:
+    x_m = np.asarray(axial_history.get("x_m", []), dtype=float)
+    if x_m.size == 0:
+        return []
+    count = max(1, min(int(station_count), len(x_m)))
+    return sorted(set(int(index) for index in np.linspace(0, len(x_m) - 1, count, dtype=int)))
+
+
+def _plot_ballistics_outputs(
+    output_dir: Path,
+    payload: Mapping[str, Any],
+    zero_d_payload: Mapping[str, Any] | None = None,
+) -> None:
+    history = payload["result"]["history"]
+    axial_history = payload["result"].get("axial_history", {})
+    if not history:
+        return
+
+    time_s = history["t_s"]
+    write_line_plot(
+        output_dir / "pc_vs_time.svg",
+        [{"label": "1D Pc [bar]", "x": time_s, "y": history["pc_bar"]}],
+        "Quasi-1D Chamber Pressure vs Time",
+        "Time [s]",
+        "Pressure [bar]",
+    )
+    write_line_plot(
+        output_dir / "thrust_vs_time.svg",
+        [{"label": "1D Thrust [N]", "x": time_s, "y": history["thrust_n"]}],
+        "Quasi-1D Thrust vs Time",
+        "Time [s]",
+        "Thrust [N]",
+    )
+    write_line_plot(
+        output_dir / "of_vs_time.svg",
+        [{"label": "1D O/F [-]", "x": time_s, "y": history["of_ratio"]}],
+        "Quasi-1D O/F vs Time",
+        "Time [s]",
+        "O/F [-]",
+    )
+    write_line_plot(
+        output_dir / "mass_flow_vs_time.svg",
+        [
+            {"label": "Oxidizer Flow [kg/s]", "x": time_s, "y": history["mdot_ox_kg_s"]},
+            {"label": "Fuel Flow [kg/s]", "x": time_s, "y": history["mdot_f_kg_s"]},
+            {"label": "Total Flow [kg/s]", "x": time_s, "y": history["mdot_total_kg_s"]},
+        ],
+        "Quasi-1D Mass Flow vs Time",
+        "Time [s]",
+        "Mass Flow [kg/s]",
+    )
+
+    if axial_history:
+        axial_time_s = axial_history["time_s"]
+        x_m = axial_history["x_m"]
+        station_indices = _sample_station_indices(
+            axial_history,
+            payload["result"]["runtime"]["ballistics_settings"].station_sample_count,
+        )
+        radius_series = []
+        gox_series = []
+        for cell_index in station_indices:
+            position_mm = float(x_m[cell_index] * 1000.0)
+            radius_series.append(
+                {
+                    "label": f"x={position_mm:.0f} mm",
+                    "x": axial_time_s,
+                    "y": axial_history["port_radius_mm"][:, cell_index],
+                }
+            )
+            gox_series.append(
+                {
+                    "label": f"x={position_mm:.0f} mm",
+                    "x": axial_time_s,
+                    "y": axial_history["oxidizer_flux_kg_m2_s"][:, cell_index],
+                }
+            )
+        write_line_plot(
+            output_dir / "port_radius_stations_vs_time.svg",
+            radius_series,
+            "Port Radius at Axial Stations",
+            "Time [s]",
+            "Port Radius [mm]",
+        )
+        write_line_plot(
+            output_dir / "gox_stations_vs_time.svg",
+            gox_series,
+            "Oxidizer Flux at Axial Stations",
+            "Time [s]",
+            "Gox [kg/m^2/s]",
+        )
+        write_line_plot(
+            output_dir / "final_port_radius_vs_x.svg",
+            [{"label": "Final Port Radius [mm]", "x": x_m, "y": axial_history["port_radius_mm"][-1, :]}],
+            "Final Port Radius vs Axial Position",
+            "Axial Position [m]",
+            "Port Radius [mm]",
+        )
+        write_line_plot(
+            output_dir / "final_regression_rate_vs_x.svg",
+            [{"label": "Final rdot [mm/s]", "x": x_m, "y": axial_history["regression_rate_mm_s"][-1, :]}],
+            "Final Regression Rate vs Axial Position",
+            "Axial Position [m]",
+            "Regression Rate [mm/s]",
+        )
+
+    if zero_d_payload is not None and zero_d_payload["result"]["history"]:
+        zero_d_history = zero_d_payload["result"]["history"]
+        write_line_plot(
+            output_dir / "compare_pc_0d_vs_1d.svg",
+            [
+                {"label": "0D", "x": zero_d_history["t_s"], "y": zero_d_history["pc_bar"]},
+                {"label": "1D", "x": history["t_s"], "y": history["pc_bar"]},
+            ],
+            "0D vs 1D | Chamber Pressure",
+            "Time [s]",
+            "Pressure [bar]",
+        )
+        write_line_plot(
+            output_dir / "compare_thrust_0d_vs_1d.svg",
+            [
+                {"label": "0D", "x": zero_d_history["t_s"], "y": zero_d_history["thrust_n"]},
+                {"label": "1D", "x": history["t_s"], "y": history["thrust_n"]},
+            ],
+            "0D vs 1D | Thrust",
+            "Time [s]",
+            "Thrust [N]",
+        )
+        write_line_plot(
+            output_dir / "compare_of_0d_vs_1d.svg",
+            [
+                {"label": "0D", "x": zero_d_history["t_s"], "y": zero_d_history["of_ratio"]},
+                {"label": "1D", "x": history["t_s"], "y": history["of_ratio"]},
+            ],
+            "0D vs 1D | O/F",
+            "Time [s]",
+            "O/F [-]",
+        )
+
+
+def _export_ballistics_run(study_config: Mapping[str, Any], cea_config_path: str | None, output_root: Path) -> dict[str, Any]:
+    output_dir = ensure_directory(output_root / BALLISTICS_1D_DIRNAME)
+    geometry, geometry_path = _resolve_ballistics_geometry(study_config, cea_config_path, output_root)
+    raw_cea_config = load_cea_config(cea_config_path) if cea_config_path else None
+    zero_d_payload = run_nominal_case(study_config) if study_config["ballistics_1d"]["compare_to_0d"] else None
+    payload = run_ballistics_case(
+        study_config,
+        geometry,
+        cea_data={"raw_config": raw_cea_config} if raw_cea_config is not None else None,
+        compare_payload=zero_d_payload,
+    )
+
+    write_json(output_dir / "design_config_used.json", study_config)
+    write_json(output_dir / "baseline_geometry_used.json", geometry.to_dict())
+    write_json(output_dir / "ballistics_settings_used.json", study_config["ballistics_1d"])
+    write_json(output_dir / "geometry_source.json", {"geometry_path": str(geometry_path)})
+    if raw_cea_config is not None:
+        write_json(output_dir / "cea_config_used.json", raw_cea_config)
+    if zero_d_payload is not None:
+        write_json(output_dir / "nominal_0d_metrics.json", zero_d_payload["metrics"])
+    write_ballistics_outputs(
+        output_dir,
+        result=payload["result"],
+        metrics=payload["metrics"],
+        constraints=payload["constraints"],
+        geometry=geometry,
+        comparison=payload["comparison"],
+    )
+    _plot_ballistics_outputs(output_dir, payload, zero_d_payload=zero_d_payload)
+    return {
+        "output_dir": output_dir,
+        "payload": payload,
+        "geometry": geometry,
+        "zero_d_payload": zero_d_payload,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Hybrid rocket workflow entry point.")
-    parser.add_argument("--mode", required=True, choices=["cea", "nominal", "oat", "corners", "freeze_geometry"], help="Workflow mode to execute.")
+    parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["cea", "nominal", "oat", "corners", "freeze_geometry", "ballistics_1d"],
+        help="Workflow mode to execute.",
+    )
     parser.add_argument("--config", default=None, help="Optional path to a design-study override JSON config.")
     parser.add_argument("--cea-config", dest="cea_config", default=None, help="Optional path to a CEA override JSON config.")
     parser.add_argument("--output-dir", default=str(OUTPUT_ROOT), help="Root output directory for generated artifacts.")
@@ -320,13 +575,24 @@ def main() -> None:
         print(f"Wrote outputs to {output_root / CORNERS_DIRNAME}")
         return
 
-    payload = _export_geometry_run(study_config, args.cea_config, output_root)
-    geometry = payload["geometry"]
-    print(f"Frozen geometry valid: {geometry.geometry_valid}")
-    print(f"Chamber ID: {geometry.chamber_id_m * 1000.0:.2f} mm")
-    print(f"Grain length: {geometry.grain_length_m * 1000.0:.2f} mm")
-    print(f"Throat diameter: {geometry.throat_diameter_m * 1000.0:.2f} mm")
-    print(f"Initial L*: {geometry.lstar_initial_m:.3f} m")
+    if args.mode == "freeze_geometry":
+        payload = _export_geometry_run(study_config, args.cea_config, output_root)
+        geometry = payload["geometry"]
+        print(f"Frozen geometry valid: {geometry.geometry_valid}")
+        print(f"Chamber ID: {geometry.chamber_id_m * 1000.0:.2f} mm")
+        print(f"Grain length: {geometry.grain_length_m * 1000.0:.2f} mm")
+        print(f"Throat diameter: {geometry.throat_diameter_m * 1000.0:.2f} mm")
+        print(f"Initial L*: {geometry.lstar_initial_m:.3f} m")
+        print(f"Wrote outputs to {payload['output_dir']}")
+        return
+
+    payload = _export_ballistics_run(study_config, args.cea_config, output_root)
+    metrics = payload["payload"]["metrics"]
+    print(f"Ballistics 1D status: {metrics['status']} ({metrics['stop_reason']})")
+    print(f"Average thrust: {metrics['thrust_avg_n']:.2f} N")
+    print(f"Impulse: {metrics['impulse_total_ns']:.2f} N s")
+    print(f"Average Pc: {metrics['pc_avg_bar']:.2f} bar")
+    print(f"Geometry valid: {metrics['geometry_valid']}")
     print(f"Wrote outputs to {payload['output_dir']}")
 
 

@@ -2,6 +2,12 @@
 
 import math
 
+from src.models.nozzle import (
+    STANDARD_SEA_LEVEL_PRESSURE_PA,
+    cf_vac_from_isp_and_cstar,
+    evaluate_nozzle_performance,
+)
+
 
 G0_MPS2 = 9.80665
 STANDARD_SEA_LEVEL_PRESSURE_BAR = 1.01325
@@ -101,7 +107,20 @@ def add_nozzle_sizing(case, config):
     mdot_total = target_thrust_n / case["isp_mps"]
     at_m2 = mdot_total * case["cstar_mps"] / pc_pa
     ae_m2 = case["ae_at"] * at_m2
-    thrust_sl_n = target_thrust_n + (case["pe_bar"] - STANDARD_SEA_LEVEL_PRESSURE_BAR) * 1e5 * ae_m2
+    cf_sl = case["isp_mps"] / case["cstar_mps"]
+    cf_vac = cf_vac_from_isp_and_cstar(case["isp_vac_mps"] / G0_MPS2, case["cstar_mps"])
+    nozzle = evaluate_nozzle_performance(
+        cstar_mps=case["cstar_mps"],
+        cf_vac=cf_vac,
+        chamber_pressure_pa=pc_pa,
+        throat_area_m2=at_m2,
+        mdot_total_kg_s=mdot_total,
+        ambient_pressure_pa=STANDARD_SEA_LEVEL_PRESSURE_PA,
+        exit_area_m2=ae_m2,
+        exit_pressure_ratio=case["pe_bar"] / case["pc_bar"],
+        gamma_e=case["gamma_e"],
+        molecular_weight_exit=case["mw_e"],
+    )
     dt_m = diameter_m_from_circle_area(at_m2)
     de_m = diameter_m_from_circle_area(ae_m2)
     max_exit_diameter_cm = config.get("max_exit_diameter_cm")
@@ -117,12 +136,20 @@ def add_nozzle_sizing(case, config):
         "mdot_total_kg_s": mdot_total,
         "at_m2": at_m2,
         "ae_m2": ae_m2,
-        "thrust_sl_n": thrust_sl_n,
+        "thrust_ideal_vac_n": nozzle.thrust_vac_n,
+        "thrust_vac_n": nozzle.thrust_vac_n,
+        "thrust_sea_level_n": nozzle.thrust_actual_n,
+        "thrust_sl_n": nozzle.thrust_actual_n,
         "dt_mm": dt_m * 1e3,
         "de_mm": de_m * 1e3,
         "de_cm": de_cm,
-        "isp_s": case["isp_mps"] / G0_MPS2,
-        "isp_vac_s": case["isp_vac_mps"] / G0_MPS2,
+        "cf_ideal": cf_vac,
+        "cf_actual": cf_sl,
+        "cf_sea_level": cf_sl,
+        "cf_vac": cf_vac,
+        "isp_s": nozzle.isp_actual_s,
+        "isp_sl_s": nozzle.isp_actual_s,
+        "isp_vac_s": nozzle.isp_vac_s,
         "exit_diameter_margin_cm": None,
         "exit_diameter_within_limit": True,
     }
