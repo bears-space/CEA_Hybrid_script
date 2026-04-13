@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BEARS How To</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <main class="detail-shell">
+        <section class="panel detail-hero">
+          <div class="detail-hero-top">
+            <a class="button" href="/">Back To Dashboard</a>
+          </div>
+          <p class="eyebrow">How To</p>
+          <h1>Workflow Inputs, Outputs, And Feed-Forward Paths</h1>
+          <p class="hero-text">
+            This page is the first expandable map of how config inputs, analysis steps, generated artifacts, and downstream consumers connect across the workflow.
+          </p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Graphical Flow</h2>
+            <p>Read left to right: config inputs, core calculations, frozen geometry and physics, hardware sizing, then verification and campaign logic.</p>
+          </div>
+          <div id="workflowMapCard" class="workflow-map-card">
+            <div class="empty-state">Loading workflow graph...</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Step Details</h2>
+            <p>Each card lists what the step consumes, what it writes, and where those outputs are typically fed next.</p>
+          </div>
+          <div id="workflowStepGrid" class="workflow-step-grid">
+            <div class="empty-state">Loading step details...</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="howto.js"></script>
+  </body>
+</html>
