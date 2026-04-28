@@ -1,6 +1,6 @@
-"""Thin launcher for the browser UI server."""
+"""Compatibility launcher for the browser UI server."""
 
-from cea_hybrid.server import main
+from src.ui.server import main
 
 
 if __name__ == "__main__":

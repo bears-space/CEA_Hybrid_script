@@ -1,4 +1,4 @@
-﻿{
+{
   "cea": {
     "target_thrust_n": 4000.0,
     "max_exit_diameter_cm": 12.0,
@@ -38,6 +38,7 @@
       "injector": {
         "cd": 0.8,
         "hole_count": 24,
+        "hole_diameter_m": 0.0015,
         "total_area_m2": 7.5e-05,
         "override_total_area": false,
         "pressure_drop_policy": "nominal",
@@ -78,19 +79,23 @@
     "sweeps": {
       "ae_at": {
         "custom_enabled": true,
-        "start": 1.0,
-        "stop": 24.0,
+        "start": 6.0,
+        "stop": 18.0,
         "step": 0.1,
         "cf_search_upper_bound": 3.0
       },
       "of": {
-        "start": 1.0,
-        "stop": 14.0,
-        "count": 100
+        "start": 4.0,
+        "stop": 10.0,
+        "count": 7
       },
-      "abs_volume_fractions": [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3],
-      "fuel_temperatures_k": [273.15, 283.15, 293.15, 303.15, 313.15, 323.15],
-      "oxidizer_temperatures_k": [273.15, 283.15, 293.15, 303.15, 313.15, 323.15]
+      "abs_volume_fractions": {
+        "start": 0.0,
+        "stop": 0.2,
+        "step": 0.1
+      },
+      "fuel_temperatures_k": [283.15, 293.15, 303.15],
+      "oxidizer_temperatures_k": [283.15, 293.15, 303.15]
     },
     "species": {
       "oxidizer": "N2O",
@@ -110,77 +115,78 @@
   "design_workflow": {
     "nominal": {
       "performance": {
-        "target_thrust_n": 4000.0,
-        "of_ratio": 6.0,
-        "isp_s": 260.0,
-        "pc_bar": 30.0,
-        "ae_at": 12.0,
-        "cstar_mps": 1500.0,
-        "cf": 1.45,
+        "target_thrust_n": 1500.0,
+        "of_ratio": 4.0,
+        "isp_s": 152.9574313814,
+        "pc_bar": 20.0,
+        "ae_at": 4.0,
+        "cstar_mps": 1000.0,
+        "cf": 1.5,
         "fuel_temperature_k": 293.15,
         "tank_temperature_k": 293.15,
-        "abs_volume_fraction": 0.1
+        "abs_volume_fraction": 0.0
       },
       "blowdown": {
         "auto_run_after_cea": false,
         "ui_mode": "advanced",
         "seed_case": "highest_isp",
         "tank": {
-          "volume_m3": 0.028,
-          "initial_mass_kg": 18.0,
+          "volume_m3": 0.01,
+          "initial_mass_kg": 5.0,
           "initial_temp_k": 293.15,
-          "usable_oxidizer_fraction": 0.95,
-          "initial_fill_fraction": 0.8,
-          "override_mass_volume": false
+          "usable_oxidizer_fraction": 0.8,
+          "initial_fill_fraction": 0.5,
+          "override_mass_volume": true
         },
-      "feed": {
-        "line_id_m": 0.012,
-        "line_length_m": 1.2,
-        "friction_factor": 0.02,
-        "minor_loss_k_total": 8.0,
-        "loss_model": "hydraulic_lumped_k",
-        "pressure_drop_multiplier": 1.0,
-        "manual_delta_p_pa": 100000.0
-      },
-      "injector": {
-        "cd": 0.8,
-        "hole_count": 24,
-        "total_area_m2": 7.5e-05,
-        "override_total_area": false,
-        "pressure_drop_policy": "nominal",
-        "sizing_condition": "nominal_initial",
-        "minimum_dp_over_pc": 0.15,
-        "delta_p_mode": "fraction_of_pc",
-        "delta_p_pa": 600000.0,
-        "delta_p_fraction_of_pc": 0.2
-      },
+        "feed": {
+          "line_id_m": 0.012,
+          "line_length_m": 0.5,
+          "friction_factor": 0.02,
+          "minor_loss_k_total": 8.0,
+          "loss_model": "hydraulic_lumped_k",
+          "pressure_drop_multiplier": 1.0,
+          "manual_delta_p_pa": 0.0
+        },
+        "injector": {
+          "cd": 1.0,
+          "hole_count": 4,
+          "hole_diameter_m": 0.0015,
+          "total_area_m2": 0.000007068583470577034,
+          "override_total_area": true,
+          "pressure_drop_policy": "nominal",
+          "sizing_condition": "nominal_initial",
+          "minimum_dp_over_pc": 0.15,
+          "delta_p_mode": "fraction_of_pc",
+          "delta_p_pa": 600000.0,
+          "delta_p_fraction_of_pc": 0.2
+        },
         "grain": {
-          "abs_density_kg_m3": 1050.0,
-          "paraffin_density_kg_m3": 930.0,
+          "abs_density_kg_m3": 1000.0,
+          "paraffin_density_kg_m3": 1000.0,
           "regression_preset": "custom",
-          "a_reg_si": 5.0e-05,
+          "a_reg_si": 0.00005,
           "n_reg": 0.5,
           "port_count": 1,
-          "target_initial_gox_kg_m2_s": 250.0,
-          "initial_port_radius_m": 0.022,
-          "grain_length_m": 0.45,
-          "outer_radius_m": 0.045,
-          "fuel_usable_fraction": 0.98,
-          "override_initial_port_radius": false,
-          "override_grain_length": false,
-          "override_outer_radius": false
+          "target_initial_gox_kg_m2_s": 636.6197723675814,
+          "initial_port_radius_m": 0.02,
+          "grain_length_m": 0.5,
+          "outer_radius_m": 0.032196580171197614,
+          "fuel_usable_fraction": 1.0,
+          "override_initial_port_radius": true,
+          "override_grain_length": true,
+          "override_outer_radius": true
         },
-      "simulation": {
-        "dt_s": 0.02,
-        "burn_time_s": 5.0,
-        "ambient_pressure_pa": 101325.0,
-        "max_inner_iterations": 80,
-        "relaxation": 0.35,
-        "relative_tolerance": 1.0e-06,
-        "stop_when_tank_quality_exceeds": 0.95,
-        "oxidizer_depletion_policy": "usable_reserve_or_quality",
-        "stop_on_quality_limit": true
-      }
+        "simulation": {
+          "dt_s": 0.02,
+          "burn_time_s": 5.0,
+          "ambient_pressure_pa": 101325,
+          "max_inner_iterations": 80,
+          "relaxation": 0.35,
+          "relative_tolerance": 0.000001,
+          "stop_when_tank_quality_exceeds": 0.95,
+          "oxidizer_depletion_policy": "usable_reserve_or_quality",
+          "stop_on_quality_limit": true
+        }
       },
       "loss_factors": {
         "cstar_efficiency": 1.0,
@@ -190,56 +196,493 @@
       }
     },
     "performance_lookup": {
-      "enabled": true,
-      "of_padding": 2.0,
+      "enabled": false,
+      "of_padding": 2,
       "sample_count": 9,
       "fallback_to_seed_on_failure": true
     },
-    "ballistics_1d": {
+    "internal_ballistics": {
       "solver_mode": "1d",
       "axial_cell_count": 31,
       "time_step_s": 0.01,
       "max_simulation_time_s": 5.0,
-      "ambient_pressure_pa": 101325.0,
+      "ambient_pressure_pa": 101325,
       "prechamber_model_mode": "lumped_volume",
       "postchamber_model_mode": "lumped_volume",
       "performance_lookup_mode": "cea_table",
       "regression_model_mode": "power_law",
       "geometry_input_source": "auto",
-      "geometry_path": "output/geometry/baseline_geometry.json",
+      "geometry_path": "output/geometry/geometry_definition.json",
       "auto_freeze_geometry_if_missing": true,
       "record_every_n_steps": 1,
       "station_sample_count": 3,
-      "compare_to_0d": true,
+      "compare_to_0d": false,
       "axial_correction_mode": "showerhead_head_end_bias",
       "axial_head_end_bias_strength": 0.15,
       "axial_bias_decay_fraction": 0.35,
       "max_port_growth_fraction_per_step": 0.5,
       "max_pressure_iterations": 80,
       "pressure_relaxation": 0.35,
-      "pressure_relative_tolerance": 1.0e-06
+      "pressure_relative_tolerance": 0.000001
+    },
+    "injector_design": {
+      "injector_type": "axial_showerhead",
+      "solver_injector_source": "equivalent_manual",
+      "design_condition_source": "nominal_initial",
+      "geometry_path": "output/injector_design/injector_geometry.json",
+      "engine_geometry_input_source": "auto",
+      "engine_geometry_path": "output/geometry/geometry_definition.json",
+      "auto_freeze_geometry_if_missing": true,
+      "preferred_hole_count_mode": "list",
+      "allowed_hole_count_values": [4],
+      "fixed_hole_diameter_mm": 1.5,
+      "preferred_hole_diameter_range_mm": [1.5, 1.5],
+      "minimum_hole_diameter_mm": 1.5,
+      "maximum_hole_diameter_mm": 1.5,
+      "minimum_ligament_mm": 0.6,
+      "minimum_edge_margin_mm": 1.0,
+      "preferred_plate_thickness_mm": 8.0,
+      "target_hole_ld_min": 1.5,
+      "target_hole_ld_max": 4.0,
+      "allow_center_hole": true,
+      "maximum_ring_count": 2,
+      "preferred_ring_spacing_mode": "balanced",
+      "active_face_margin_factor": 0.92,
+      "plenum_depth_guess_mm": 12.0,
+      "face_to_grain_distance_guess_mm": 10.0,
+      "discharge_edge_model": "sharp_edged",
+      "default_injector_cd": 1.0,
+      "backcalculation_mode": "edge_and_ld_heuristic",
+      "maximum_open_area_ratio": 0.25,
+      "maximum_hole_velocity_m_s": 100.0,
+      "user_design_point": {}
+    },
+    "hydraulic_validation": {
+      "hydraulic_source": "nominal_uncalibrated",
+      "dataset_path": "input/coldflow_dataset.csv",
+      "dataset_format": "auto",
+      "dataset_name": "hydraulic_dataset",
+      "output_subdir": "hydraulic_validation",
+      "calibration_mode": "joint",
+      "test_mode": "feed_plus_injector_rig",
+      "injector_model_source": "solver_default",
+      "injector_geometry_path": "output/injector_design/injector_geometry.json",
+      "calibration_package_path": "output/hydraulic_validation/calibration_package.json",
+      "comparison_package_path": "output/hydraulic_validation/calibration_package.json",
+      "allow_missing_calibration_package": true,
+      "force_disable_feed_model": false,
+      "fluid": {
+        "name": "water",
+        "temperature_k": 293.15,
+        "density_kg_m3": 997.0,
+        "is_surrogate": true,
+        "intended_application": "injector geometry shakedown / line-loss shakedown / partial transfer only"
+      },
+      "rig": {
+        "test_mode": "feed_plus_injector_rig",
+        "pressure_tap_locations": {
+          "upstream": "feed manifold upstream tap",
+          "injector_inlet": "injector manifold tap",
+          "downstream": "injector discharge / chamber surrogate tap"
+        },
+        "line_geometry_known": false,
+        "valve_filter_notes": [],
+        "injector_geometry_reference": "output/injector_design/injector_geometry.json",
+        "calibration_assumptions": [
+          "Reduced-order single-phase incompressible hydraulic model.",
+          "Fluid density is supplied from the dataset or the hydraulic_validation.fluid default."
+        ],
+        "surrogate_fluid_used": true,
+        "intended_application": "injector geometry shakedown / line-loss shakedown / partial transfer only",
+        "notes": [],
+        "feed_model_override": {}
+      },
+      "ingest": {
+        "column_map": {},
+        "unit_overrides": {},
+        "field_aliases": {}
+      }
+    },
+    "structural": {
+      "load_source": "corner_case_envelope",
+      "geometry_input_source": "auto",
+      "geometry_path": "output/geometry/geometry_definition.json",
+      "auto_freeze_geometry_if_missing": true,
+      "injector_geometry_input_source": "auto",
+      "injector_geometry_path": "output/injector_design/injector_geometry.json",
+      "auto_synthesize_injector_if_missing": true,
+      "allow_missing_injector_geometry": true,
+      "include_nominal_initial_case": true,
+      "include_nominal_peak_case": true,
+      "include_corner_case_envelope": true,
+      "include_internal_ballistics_peak_case": true,
+      "allowable_basis": "yield_based",
+      "closure_style": "bolted_flange",
+      "component_materials": {
+        "chamber_wall": "aluminum_6061_t6",
+        "forward_closure": "aluminum_6061_t6",
+        "aft_closure": "aluminum_6061_t6",
+        "injector_plate": "aluminum_6061_t6",
+        "nozzle_mount": "aluminum_6061_t6",
+        "fasteners": "steel_4140_qt"
+      },
+      "custom_materials": {},
+      "design_policy": {
+        "yield_safety_factor": 1.5,
+        "ultimate_safety_factor": 2.0,
+        "proof_factor": 1.25,
+        "burst_factor": 2.0,
+        "thin_wall_switch_ratio": 10.0,
+        "minimum_wall_thickness_m": 0.0025,
+        "minimum_flange_thickness_m": 0.004,
+        "thickness_roundup_increment_m": 0.0005,
+        "default_bolt_preload_fraction": 0.65,
+        "closure_model_type": "clamped_circular_plate",
+        "injector_plate_model_type": "clamped_circular_plate",
+        "nozzle_mount_model_type": "clamped_circular_plate",
+        "mass_roundup_factor": 1.1,
+        "corrosion_or_manufacturing_allowance_m": 0.0005
+      },
+      "forward_closure": {
+        "loaded_diameter_scale": 1.0,
+        "loaded_diameter_m": null,
+        "minimum_thickness_m": null
+      },
+      "aft_closure": {
+        "loaded_diameter_scale": 1.0,
+        "loaded_diameter_m": null,
+        "minimum_thickness_m": null
+      },
+      "injector_plate": {
+        "unsupported_diameter_scale": 0.92,
+        "unsupported_diameter_m": null,
+        "selected_thickness_m": null,
+        "open_area_warning_threshold": 0.25,
+        "perforation_stress_multiplier_factor": 1.5
+      },
+      "fasteners": {
+        "fastener_count": 12,
+        "nominal_diameter_m": 0.00635,
+        "tensile_area_factor": 0.75,
+        "joint_load_fraction": 1.0,
+        "grip_length_m": 0.03
+      },
+      "nozzle_mount": {
+        "loaded_diameter_scale": 2.0,
+        "loaded_diameter_m": null,
+        "minimum_thickness_m": null,
+        "separating_force_multiplier": 1.0
+      },
+      "grain_support": {
+        "retention_concept": "support_rings",
+        "minimum_clearance_m": 0.001,
+        "minimum_final_web_m": 0.001,
+        "max_grain_slenderness_ratio": 15.0,
+        "max_web_slenderness_ratio": 80.0
+      },
+      "user_override_load_case": {
+        "case_name": "user_override",
+        "source_stage": "user_override",
+        "notes": []
+      }
+    },
+    "thermal": {
+      "load_source": "corner_case_envelope",
+      "geometry_input_source": "auto",
+      "geometry_path": "output/geometry/geometry_definition.json",
+      "auto_freeze_geometry_if_missing": true,
+      "injector_geometry_input_source": "auto",
+      "injector_geometry_path": "output/injector_design/injector_geometry.json",
+      "auto_synthesize_injector_if_missing": true,
+      "allow_missing_injector_geometry": true,
+      "include_nominal_initial_case": true,
+      "include_corner_case_envelope": true,
+      "include_internal_ballistics_case": true,
+      "reference_chamber_temp_k": 3200.0,
+      "temperature_scale_exponent": 0.15,
+      "region_gas_temp_scale": {
+        "prechamber": 0.99,
+        "chamber": 1.0,
+        "postchamber": 0.98
+      },
+      "component_materials": {
+        "chamber_wall": "aluminum_6061_t6",
+        "prechamber": "aluminum_6061_t6",
+        "postchamber": "aluminum_6061_t6",
+        "throat": "aluminum_6061_t6",
+        "diverging_nozzle": "aluminum_6061_t6",
+        "injector_face": "aluminum_6061_t6",
+        "liner": "phenolic_liner",
+        "throat_insert": "graphite"
+      },
+      "custom_materials": {},
+      "design_policy": {
+        "gas_side_htc_model": "bartz_like",
+        "throat_htc_multiplier": 1.35,
+        "injector_face_htc_multiplier": 0.95,
+        "use_lumped_wall_model": true,
+        "wall_model_type": "two_node_lumped",
+        "inner_wall_node_count": 2,
+        "outer_convection_model": "fixed_h",
+        "outer_h_guess_w_m2k": 12.0,
+        "outer_ambient_temp_k": 293.15,
+        "radiation_enabled": true,
+        "surface_emissivity": 0.8,
+        "service_temp_margin_k": 40.0,
+        "sacrificial_liner_allowed": true,
+        "sacrificial_throat_insert_allowed": true,
+        "temperature_limit_basis": "max_service_temp",
+        "thermal_roundup_increment_m": 0.0005,
+        "minimum_protection_thickness_m": 0.001
+      },
+      "nozzle_geometry": {
+        "converging_half_angle_deg": 45.0,
+        "diverging_half_angle_deg": 15.0,
+        "throat_blend_radius_factor": 1.5
+      },
+      "chamber": {
+        "selected_wall_thickness_m": null
+      },
+      "throat": {
+        "selected_wall_thickness_m": null,
+        "axial_length_scale": 1.0
+      },
+      "diverging_nozzle": {
+        "selected_wall_thickness_m": null
+      },
+      "injector_face": {
+        "selected_thickness_m": null
+      },
+      "liner": {
+        "enabled": false,
+        "selected_thickness_m": null
+      },
+      "throat_insert": {
+        "enabled": false,
+        "selected_thickness_m": null
+      },
+      "maximum_shell_inner_wall_temp_k": 900.0,
+      "minimum_remaining_liner_thickness_m": 0.0,
+      "use_ablative_liner_model": false,
+      "rho_liner": 1350.0,
+      "H_ablation_effective": 2500000.0,
+      "T_pyrolysis_k": 650.0,
+      "user_override_load_case": {
+        "case_name": "user_override",
+        "source_stage": "user_override",
+        "notes": []
+      }
+    },
+    "nozzle_offdesign": {
+      "source_mode": "nominal_0d",
+      "geometry_input_source": "auto",
+      "geometry_path": "output/geometry/geometry_definition.json",
+      "auto_freeze_geometry_if_missing": true,
+      "injector_geometry_input_source": "auto",
+      "injector_geometry_path": "output/injector_design/injector_geometry.json",
+      "auto_synthesize_injector_if_missing": true,
+      "allow_missing_injector_geometry": true,
+      "include_corner_case_envelope": true,
+      "include_internal_ballistics_case": true,
+      "use_transient_time_history": true,
+      "transient_sample_count": 25,
+      "performance_model": "reuse_solver_nozzle_model",
+      "exit_pressure_mode": "history_ratio",
+      "separation_risk_model": "pressure_ratio_heuristic",
+      "steady_point_mode": "peak_pc",
+      "reference_chamber_temp_k": 3200.0,
+      "temperature_scale_exponent": 0.15,
+      "fallback_exit_pressure_ratio": null,
+      "selected_time_indices": null,
+      "ambient_cases": [
+        {
+          "case_name": "sea_level_static",
+          "altitude_m": 0.0,
+          "environment_type": "sea_level_static",
+          "notes": ["Baseline sea-level static-fire and pad environment."]
+        },
+        {
+          "case_name": "flight_3km",
+          "altitude_m": 3000.0,
+          "environment_type": "ascent_profile_point",
+          "notes": []
+        },
+        {
+          "case_name": "flight_9km",
+          "altitude_m": 9000.0,
+          "environment_type": "ascent_profile_point",
+          "notes": []
+        },
+        {
+          "case_name": "vacuum",
+          "ambient_pressure_pa": 0.0,
+          "environment_type": "vacuum",
+          "notes": ["Vacuum endpoint reference."]
+        }
+      ],
+      "ambient_sweep": {
+        "enabled": false,
+        "minimum_altitude_m": 0.0,
+        "maximum_altitude_m": 30000.0,
+        "case_count": 6,
+        "include_vacuum_case": true
+      },
+      "ascent_profile": {
+        "enabled": false,
+        "altitude_points_m": []
+      },
+      "expansion_thresholds": {
+        "strongly_overexpanded_ratio": 0.4,
+        "moderately_overexpanded_ratio": 0.8,
+        "near_matched_upper_ratio": 1.2,
+        "moderately_underexpanded_ratio": 2.0
+      },
+      "separation_thresholds": {
+        "high_risk_ratio": 0.35,
+        "moderate_risk_ratio": 0.6,
+        "underexpanded_notice_ratio": 2.5,
+        "startup_window_fraction": 0.1,
+        "shutdown_window_fraction": 0.15
+      },
+      "penalties": {
+        "apply_separation_cf_penalty": false,
+        "moderate_risk_cf_multiplier": 0.97,
+        "high_risk_cf_multiplier": 0.9
+      },
+      "recommendations": {
+        "recommend_separate_ground_test_nozzle": true,
+        "ground_test_penalty_fraction_limit": 0.18,
+        "structural_margin_warning_threshold": 0.15,
+        "thermal_margin_warning_k": 50.0,
+        "comparison_area_ratios": []
+      },
+      "user_override_source": {}
+    },
+    "cfd": {
+      "cfd_case_source": "nominal_workflow",
+      "cfd_corrections_source": "combined",
+      "enabled_targets": [
+        "injector_plenum_plate_flow",
+        "headend_prechamber_distribution",
+        "nozzle_local_offdesign",
+        "reacting_internal_region_refinement"
+      ],
+      "target_priority_order": [
+        "injector_plenum_plate_flow",
+        "headend_prechamber_distribution",
+        "nozzle_local_offdesign",
+        "reacting_internal_region_refinement"
+      ],
+      "auto_generate_campaign_plan": true,
+      "geometry_input_source": "auto",
+      "geometry_path": "output/geometry/geometry_definition.json",
+      "auto_freeze_geometry_if_missing": true,
+      "injector_geometry_input_source": "auto",
+      "injector_geometry_path": "output/injector_design/injector_geometry.json",
+      "auto_synthesize_injector_if_missing": true,
+      "allow_missing_injector_geometry": true,
+      "include_internal_ballistics_case": true,
+      "include_corner_case_envelope": true,
+      "include_startup_shutdown_points": true,
+      "include_nominal_average_point": true,
+      "include_hot_cold_corner_points": true,
+      "generate_correction_templates": true,
+      "require_coldflow_before_stage1": false,
+      "require_internal_ballistics_before_stage2": true,
+      "require_nozzle_offdesign_before_stage3": true,
+      "preferred_export_formats": ["json", "csv"],
+      "turbulence_model": "sst_k_omega_placeholder",
+      "wall_treatment": "automatic_placeholder",
+      "result_ingest_path": "",
+      "result_ingest_format": "auto",
+      "recommended_solver_classes": {
+        "injector_plenum": "pressure_based_nonreacting",
+        "headend_prechamber": "pressure_based_nonreacting",
+        "nozzle_local": "compressible_rans",
+        "reacting_internal_region": "reacting_rans_placeholder"
+      },
+      "geometry_simplifications": {
+        "suppress_small_fillet_details": true,
+        "collapse_small_hole_chamfers": true,
+        "allow_periodic_sector_model": false,
+        "truncate_far_downstream_volume": true
+      }
+    },
+    "testing": {
+      "test_campaign_source": "nominal_workflow",
+      "model_vs_test_source": "0d",
+      "hotfire_corrections_source": "staged_combined",
+      "readiness_source": "configured_progression_gates",
+      "dataset_path": "",
+      "dataset_format": "auto",
+      "enabled_stages": [
+        "material_coupon",
+        "hydraulic_validation",
+        "subscale_hotfire",
+        "fullscale_short_duration",
+        "fullscale_nominal_duration"
+      ],
+      "stage_order": [
+        "material_coupon",
+        "hydraulic_validation",
+        "subscale_hotfire",
+        "fullscale_short_duration",
+        "fullscale_nominal_duration"
+      ],
+      "geometry_reference_label": "frozen_geometry",
+      "include_internal_ballistics_case": true,
+      "include_corner_case_envelope": true,
+      "include_cfd_context": true,
+      "require_coldflow_before_hotfire": true,
+      "require_internal_ballistics_before_subscale": true,
+      "require_nozzle_offdesign_before_fullscale": true,
+      "require_cfd_before_fullscale": false,
+      "article_scaling": {
+        "subscale_linear_scale": 0.5,
+        "nominal_burn_time_s": 5.0
+      },
+      "instrumentation_defaults": {
+        "coldflow_sampling_rate_hz": 100.0,
+        "hotfire_sampling_rate_hz": 1000.0
+      },
+      "ingest": {
+        "channel_map": {},
+        "dataset_metadata_defaults": {}
+      },
+      "data_cleaning": {
+        "padding_pre_s": 0.05,
+        "padding_post_s": 0.05
+      },
+      "progression_thresholds": {
+        "allowed_pressure_trace_error_percent": 15.0,
+        "allowed_thrust_trace_error_percent": 15.0,
+        "allowed_burn_time_error_percent": 15.0,
+        "repeatability_cv_limit_percent": 5.0,
+        "thermal_warning_threshold_k": 50.0,
+        "minimum_repeat_runs": 2
+      }
     },
     "uncertainty": {
-      "tank_temperature_k": {"mode": "absolute", "value": 5.0},
-      "fill_fraction": {"mode": "absolute", "value": 0.05},
-      "usable_ox_fraction": {"mode": "absolute", "value": 0.03},
-      "injector_cd": {"mode": "percent", "value": 0.05},
-      "regression_a": {"mode": "percent", "value": 0.1},
-      "regression_n": {"mode": "absolute", "value": 0.03},
-      "cstar_efficiency": {"mode": "percent", "value": 0.03},
-      "cf_efficiency": {"mode": "percent", "value": 0.03},
-      "usable_fuel_fraction": {"mode": "absolute", "value": 0.02},
-      "injector_dp_fraction": {"mode": "absolute", "value": 0.03},
-      "line_loss_multiplier": {"mode": "percent", "value": 0.1},
-      "nozzle_discharge_factor": {"mode": "percent", "value": 0.02}
+      "tank_temperature_k": {"mode": "absolute", "value": 0.0},
+      "fill_fraction": {"mode": "absolute", "value": 0.0},
+      "usable_ox_fraction": {"mode": "absolute", "value": 0.0},
+      "injector_cd": {"mode": "percent", "value": 0.0},
+      "regression_a": {"mode": "percent", "value": 0.0},
+      "regression_n": {"mode": "absolute", "value": 0.0},
+      "cstar_efficiency": {"mode": "percent", "value": 0.0},
+      "cf_efficiency": {"mode": "percent", "value": 0.0},
+      "usable_fuel_fraction": {"mode": "absolute", "value": 0.0},
+      "injector_dp_fraction": {"mode": "absolute", "value": 0.0},
+      "line_loss_multiplier": {"mode": "percent", "value": 0.0},
+      "nozzle_discharge_factor": {"mode": "percent", "value": 0.0}
     },
     "constraints": {
-      "pc_peak_bar": {"max": 60.0},
-      "pc_avg_bar": {"min": 10.0},
-      "thrust_avg_n": {"min": 3000.0},
-      "thrust_peak_n": {"max": 6000.0},
-      "of_avg": {"min": 2.0, "max": 12.0},
-      "burn_time_actual_s": {"min": 4.0, "max": 6.0},
+      "pc_peak_bar": {"max": 25.0},
+      "pc_avg_bar": {"min": 15.0},
+      "thrust_avg_n": {"min": 1400.0},
+      "thrust_peak_n": {"max": 1600.0},
+      "of_avg": {"min": 3.9, "max": 4.1},
+      "burn_time_actual_s": {"min": 4.9, "max": 5.1},
       "status": {"allowed": ["completed"]}
     },
     "geometry_policy": {
@@ -252,12 +695,42 @@
       "grain_to_chamber_radial_clearance_m": 0.003,
       "injector_face_margin_factor": 1.05,
       "max_injector_face_margin_factor": 1.2,
-      "prechamber_length_fraction_of_grain": 0.15,
-      "postchamber_length_fraction_of_grain": 0.12,
+      "prechamber_length_mode": "hot_gas_diameter_fraction",
+      "postchamber_length_mode": "hot_gas_diameter_fraction",
+      "k_pre": 0.70,
+      "k_post": 0.55,
+      "k_pre_min": 0.20,
+      "k_pre_max": 1.50,
+      "k_post_min": 0.20,
+      "k_post_max": 1.50,
+      "L_pre_min_m": 0.015,
+      "L_pre_max_m": 0.180,
+      "L_post_min_m": 0.015,
+      "L_post_max_m": 0.180,
       "injector_plate_thickness_m": 0.008,
       "chamber_wall_thickness_guess_m": 0.004,
       "min_radial_web_m": 0.003,
       "min_burnout_web_m": 0.001,
+      "max_shell_outer_diameter_m": 0.200,
+      "max_hot_gas_diameter_m": 0.150,
+      "max_grain_length_m": 1.200,
+      "max_total_chamber_length_m": 1.500,
+      "max_nozzle_length_m": 0.350,
+      "max_exit_diameter_m": 0.160,
+      "min_initial_web_m": 0.003,
+      "min_final_web_m": 0.0,
+      "max_grain_slenderness": 15.0,
+      "max_web_slenderness": 80.0,
+      "min_lstar_m": 0.50,
+      "max_lstar_m": 20.00,
+      "alpha_min_deg": 35.0,
+      "alpha_max_deg": 55.0,
+      "beta_min_deg": 12.0,
+      "beta_max_deg": 25.0,
+      "epsilon_min": 4.0,
+      "epsilon_max": 24.0,
+      "max_area_expansion_ratio": 24.0,
+      "radius_search_step_m": 0.0005,
       "max_port_to_outer_radius_ratio": 0.92,
       "max_grain_slenderness_ratio": 15.0,
       "min_nozzle_area_ratio": 1.0,

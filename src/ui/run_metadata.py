@@ -14,7 +14,7 @@ def group_artifacts_by_section(root: Path) -> dict[str, list[dict[str, Any]]]:
     if not artifact_index_path.exists():
         return {}
     groups: dict[str, list[dict[str, Any]]] = {}
-    with artifact_index_path.open("r", encoding="utf-8") as handle:
+    with artifact_index_path.open("r", encoding="utf-8-sig", newline="") as handle:
         for row in csv.DictReader(handle):
             section = str(row.get("section") or "run_root")
             groups.setdefault(section, []).append(dict(row))

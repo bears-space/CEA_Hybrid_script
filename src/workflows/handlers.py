@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import logging
 from typing import Any
 
 from src.constants import (
@@ -21,6 +22,8 @@ from src.constants import (
 )
 from src.io_utils import ensure_directory, write_json
 from src.workflows.runtime import WorkflowContext
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _result(context: WorkflowContext, payload: dict[str, Any]) -> dict[str, Any]:
@@ -407,4 +410,7 @@ MODE_HANDLERS = {
 def dispatch_workflow(context: WorkflowContext) -> dict[str, Any]:
     """Dispatch a prepared workflow context to its canonical mode handler."""
 
-    return MODE_HANDLERS[context.mode](context)
+    LOGGER.info("Running workflow handler '%s' for run '%s'.", context.mode, context.run.run_id)
+    result = MODE_HANDLERS[context.mode](context)
+    LOGGER.info("Workflow handler '%s' completed for run '%s'.", context.mode, context.run.run_id)
+    return result

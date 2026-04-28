@@ -1,0 +1,85 @@
+{
+  "source_mode": "nominal_0d",
+  "geometry_input_source": "auto",
+  "geometry_path": "output/geometry/geometry_definition.json",
+  "auto_freeze_geometry_if_missing": true,
+  "injector_geometry_input_source": "auto",
+  "injector_geometry_path": "output/injector_design/injector_geometry.json",
+  "auto_synthesize_injector_if_missing": true,
+  "allow_missing_injector_geometry": true,
+  "include_corner_case_envelope": true,
+  "include_internal_ballistics_case": true,
+  "use_transient_time_history": true,
+  "transient_sample_count": 25,
+  "performance_model": "reuse_solver_nozzle_model",
+  "exit_pressure_mode": "history_ratio",
+  "separation_risk_model": "pressure_ratio_heuristic",
+  "steady_point_mode": "peak_pc",
+  "reference_chamber_temp_k": 3200.0,
+  "temperature_scale_exponent": 0.15,
+  "fallback_exit_pressure_ratio": null,
+  "selected_time_indices": null,
+  "ambient_cases": [
+    {
+      "case_name": "sea_level_static",
+      "altitude_m": 0.0,
+      "environment_type": "sea_level_static",
+      "notes": ["Baseline sea-level static-fire and pad environment."]
+    },
+    {
+      "case_name": "flight_5km",
+      "altitude_m": 5000.0,
+      "environment_type": "ascent_profile_point",
+      "notes": []
+    },
+    {
+      "case_name": "flight_15km",
+      "altitude_m": 15000.0,
+      "environment_type": "ascent_profile_point",
+      "notes": []
+    },
+    {
+      "case_name": "vacuum",
+      "ambient_pressure_pa": 0.0,
+      "environment_type": "vacuum",
+      "notes": ["Vacuum endpoint reference."]
+    }
+  ],
+  "ambient_sweep": {
+    "enabled": false,
+    "minimum_altitude_m": 0.0,
+    "maximum_altitude_m": 30000.0,
+    "case_count": 6,
+    "include_vacuum_case": true
+  },
+  "ascent_profile": {
+    "enabled": false,
+    "altitude_points_m": []
+  },
+  "expansion_thresholds": {
+    "strongly_overexpanded_ratio": 0.4,
+    "moderately_overexpanded_ratio": 0.8,
+    "near_matched_upper_ratio": 1.2,
+    "moderately_underexpanded_ratio": 2.0
+  },
+  "separation_thresholds": {
+    "high_risk_ratio": 0.35,
+    "moderate_risk_ratio": 0.6,
+    "underexpanded_notice_ratio": 2.5,
+    "startup_window_fraction": 0.1,
+    "shutdown_window_fraction": 0.15
+  },
+  "penalties": {
+    "apply_separation_cf_penalty": false,
+    "moderate_risk_cf_multiplier": 0.97,
+    "high_risk_cf_multiplier": 0.9
+  },
+  "recommendations": {
+    "recommend_separate_ground_test_nozzle": true,
+    "ground_test_penalty_fraction_limit": 0.18,
+    "structural_margin_warning_threshold": 0.15,
+    "thermal_margin_warning_k": 50.0,
+    "comparison_area_ratios": []
+  },
+  "user_override_source": {}
+}

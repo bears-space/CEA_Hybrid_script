@@ -1,4 +1,4 @@
-﻿"""Top-level case runner utilities for nominal Step 1 studies."""
+"""Top-level case runner utilities for the design workflow."""
 
 from __future__ import annotations
 
@@ -12,8 +12,21 @@ from src.simulation.solver_1d import run_1d_ballistics_case
 from src.sizing.geometry_types import GeometryDefinition
 
 
-def run_nominal_case(config: Mapping[str, Any]) -> dict[str, Any]:
-    result = run_0d_case(config)
+def run_nominal_case(
+    config: Mapping[str, Any],
+    *,
+    frozen_geometry: GeometryDefinition | None = None,
+    injector_geometry: Mapping[str, Any] | None = None,
+    injector_source_override: str | None = None,
+    raw_cea_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    result = run_0d_case(
+        config,
+        frozen_geometry=frozen_geometry,
+        injector_geometry=injector_geometry,
+        injector_source_override=injector_source_override,
+        raw_cea_config=raw_cea_config,
+    )
     metrics = extract_case_metrics(result, config)
     constraints = evaluate_constraints(metrics, config.get("constraints", {}))
     return {
@@ -23,14 +36,15 @@ def run_nominal_case(config: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_ballistics_case(
+def run_internal_ballistics_case(
     config: Mapping[str, Any],
     geometry: GeometryDefinition,
     *,
     cea_data: Mapping[str, Any] | None = None,
     compare_payload: Mapping[str, Any] | None = None,
+    injector_geometry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    result = run_1d_ballistics_case(config, geometry, cea_data=cea_data)
+    result = run_1d_ballistics_case(config, geometry, cea_data=cea_data, injector_geometry=injector_geometry)
     metrics = extract_case_metrics(result, config)
     constraints = evaluate_constraints(metrics, config.get("constraints", {}))
     comparison = None
@@ -43,3 +57,6 @@ def run_ballistics_case(
         "constraints": constraints,
         "comparison": comparison,
     }
+
+
+run_ballistics_case = run_internal_ballistics_case

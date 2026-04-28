@@ -1,6 +1,6 @@
-﻿"""First-pass sizing helpers re-exported through the new workflow namespace."""
+"""First-pass sizing helpers re-exported through the new workflow namespace."""
 
-from blowdown_hybrid.first_pass import (
+from src.blowdown_hybrid.first_pass import (
     blend_density_from_volume_fraction,
     equivalent_injector_hole_diameter,
     fuel_mass_flow,
@@ -47,3 +47,4 @@ __all__ = [
     "total_mass_flow_from_pc_at_cstar",
     "total_mass_flow_from_thrust",
 ]
+

@@ -9,13 +9,13 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from blowdown_hybrid.constants import G0_MPS2
-from blowdown_hybrid.hydraulics import feed_pressure_drop_pa, injector_mdot_kg_s
-from blowdown_hybrid.models import FeedConfig, GrainConfig, InjectorConfig, NozzleConfig, TankConfig
-from blowdown_hybrid.thermo import initial_tank_state_from_mass_and_temperature, tank_state_from_mass_energy_volume
+from src.blowdown_hybrid.constants import G0_MPS2
+from src.blowdown_hybrid.hydraulics import feed_pressure_drop_pa, injector_mdot_kg_s
+from src.blowdown_hybrid.models import FeedConfig, GrainConfig, InjectorConfig, NozzleConfig, TankConfig
+from src.blowdown_hybrid.thermo import initial_tank_state_from_mass_and_temperature, tank_state_from_mass_energy_volume
 
 from src.analysis.pressure_budget import pressure_budget
-from src.config_schema import build_design_config
+from src.config import build_design_config
 from src.models.nozzle import cf_vac_from_isp_and_cstar, evaluate_nozzle_performance
 from src.models.regression import PowerLawRegressionModel
 from src.simulation.axial_mesh import AxialMesh, build_axial_mesh
@@ -84,7 +84,7 @@ def _evaluate_performance(
 
 
 def _settings_from_config(config: Mapping[str, Any]) -> Ballistics1DSettings:
-    return Ballistics1DSettings(**dict(config["ballistics_1d"]))
+    return Ballistics1DSettings(**dict(config.get("internal_ballistics", config["ballistics_1d"])))
 
 
 def _station_indices(cell_count: int) -> tuple[int, int, int]:
@@ -451,6 +451,7 @@ def run_1d_ballistics_case(
     geometry: GeometryDefinition,
     cea_data: Mapping[str, Any] | None = None,
     optional_seed_state: Mapping[str, Any] | None = None,
+    injector_geometry: Mapping[str, Any] | None = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
     del verbose
@@ -463,10 +464,16 @@ def run_1d_ballistics_case(
     )
 
     try:
-        prepared = prepare_runtime_case(study_config, raw_cea_config=_raw_cea_config(cea_data))
+        prepared = prepare_runtime_case(
+            study_config,
+            raw_cea_config=_raw_cea_config(cea_data),
+            frozen_geometry=geometry,
+            injector_geometry=injector_geometry,
+        )
         runtime = _geometry_adjusted_runtime(prepared["runtime"], geometry, settings)
         if not geometry.geometry_valid:
             warnings.append("Frozen geometry is flagged invalid; 1D results should be treated as diagnostic only.")
+        warnings.extend(runtime["derived"].get("injector_geometry_warnings", []))
 
         mesh = build_axial_mesh(geometry, settings.axial_cell_count)
         regression_model = PowerLawRegressionModel(
@@ -554,7 +561,7 @@ def run_1d_ballistics_case(
             if growth_fraction > settings.max_port_growth_fraction_per_step:
                 stop_reason = "port_growth_step_limit_exceeded"
                 warnings.append(
-                    f"Step-size stability limit exceeded with fractional web growth {growth_fraction:.3f}; reduce ballistics_1d.time_step_s."
+                    f"Step-size stability limit exceeded with fractional web growth {growth_fraction:.3f}; reduce internal_ballistics.time_step_s."
                 )
                 break
 
@@ -650,3 +657,4 @@ def run_1d_ballistics_case(
             "resolved_config": study_config,
             "comparison": None,
         }
+

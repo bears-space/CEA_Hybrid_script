@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 from src.analysis.constraints import evaluate_constraints
 from src.analysis.metrics import extract_case_metrics
-from src.config_schema import build_design_config
+from src.config import build_design_config
 from src.simulation.solver_0d import run_0d_case
 
 

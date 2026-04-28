@@ -4,22 +4,22 @@ import unittest
 
 import numpy as np
 
-from cea_hybrid.server import _json_safe
-from blowdown_hybrid.calculations import build_runtime_inputs
-from blowdown_hybrid.config import (
+from src.cea_hybrid.server import _json_safe
+from src.blowdown_hybrid.calculations import build_runtime_inputs
+from src.blowdown_hybrid.config import (
     build_config,
     injector_pressure_drop_fraction_for_mode,
     regression_parameters_for_mode,
 )
-from blowdown_hybrid.constants import (
+from src.blowdown_hybrid.constants import (
     INJECTOR_PRESSURE_DROP_POLICY_NOMINAL,
 )
-from blowdown_hybrid.defaults import (
+from src.blowdown_hybrid.defaults import (
     PROJECT_DEFAULT_FUEL_USABLE_FRACTION,
     PROJECT_DEFAULT_INJECTOR_CD,
     PROJECT_DEFAULT_USABLE_OXIDIZER_FRACTION,
 )
-from blowdown_hybrid.first_pass import (
+from src.blowdown_hybrid.first_pass import (
     blend_density_from_volume_fraction,
     fuel_mass_flow,
     grain_length_from_fuel_mass_flow,
@@ -33,9 +33,9 @@ from blowdown_hybrid.first_pass import (
     tank_volume_from_fill_fraction,
     total_mass_flow_from_thrust,
 )
-from blowdown_hybrid.thermo import initial_tank_state_from_temperature
-from blowdown_hybrid.ui_backend import _points, build_config_from_payload, build_default_ui_config
-from blowdown_hybrid.solver import simulate
+from src.blowdown_hybrid.thermo import initial_tank_state_from_temperature
+from src.blowdown_hybrid.ui_backend import _points, build_config_from_payload, build_default_ui_config
+from src.blowdown_hybrid.solver import simulate
 
 
 class FirstPassEquationTests(unittest.TestCase):
@@ -171,7 +171,8 @@ class ManualOverrideRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime["derived"]["outer_radius_source"], "manual_override")
         self.assertAlmostEqual(runtime["derived"]["tank_volume_l"], 40.0)
         self.assertAlmostEqual(runtime["derived"]["tank_initial_mass_kg"], 19.0)
-        self.assertAlmostEqual(runtime["derived"]["injector_total_area_mm2"], 90.0)
+        self.assertAlmostEqual(runtime["derived"]["injector_required_total_area_mm2"], 90.0)
+        self.assertGreaterEqual(runtime["derived"]["injector_total_area_mm2"], 90.0)
         self.assertAlmostEqual(runtime["derived"]["initial_port_radius_mm"], 30.0)
         self.assertAlmostEqual(runtime["derived"]["grain_length_m"], 0.6)
         self.assertAlmostEqual(runtime["derived"]["grain_outer_radius_mm"], 90.0)

@@ -40,6 +40,25 @@ WORKFLOW_MODE_DEFINITIONS: tuple[WorkflowModeDefinition, ...] = (
     WorkflowModeDefinition("test_readiness", "Test Readiness", "Evaluates progression gates and reports whether the campaign is ready to advance to the next stage.", ("design", "cea", "hydraulic", "structural", "thermal", "nozzleOffdesign", "cfd", "testing")),
 )
 
+# Default-safe end-to-end sequence for the UI "Run All" action.
+# It intentionally excludes modes that require external datasets or ingest files.
+RUN_ALL_SEQUENCE: tuple[str, ...] = (
+    "cea",
+    "nominal",
+    "oat",
+    "corners",
+    "geometry",
+    "internal_ballistics",
+    "injector_design",
+    "structural_size",
+    "thermal_size",
+    "nozzle_offdesign",
+    "cfd_plan",
+    "cfd_export_cases",
+    "test_plan",
+    "test_readiness",
+)
+
 CANONICAL_MODES = frozenset(mode.key for mode in WORKFLOW_MODE_DEFINITIONS)
 MODE_ALIASES = {
     "freeze_geometry": "geometry",

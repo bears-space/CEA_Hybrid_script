@@ -1,4 +1,4 @@
-"""Step 2 geometry freeze built on top of the reusable Step 1 workflow outputs."""
+"""Baseline geometry freeze built on top of the reusable design-workflow outputs."""
 
 from __future__ import annotations
 
@@ -10,14 +10,9 @@ from src.analysis.constraints import evaluate_constraints
 from src.analysis.metrics import extract_case_metrics
 from src.cea.cea_interface import get_cea_performance_point
 from src.cea.cea_types import CEAPerformancePoint, CEASweepResult
-from src.config_schema import build_design_config
-from src.sizing.geometry_rules import (
-    area_from_diameter,
-    cylinder_volume_from_diameter,
-    cylindrical_port_volume,
-    diameter_from_area,
-    evaluate_geometry_checks,
-)
+from src.config import build_design_config
+from src.sizing.engine_state import build_canonical_engine_state
+from src.sizing.geometry_rules import area_from_diameter
 from src.sizing.geometry_types import GeometryDefinition
 
 
@@ -110,7 +105,7 @@ def freeze_first_pass_geometry(
     sensitivity_summary: Mapping[str, Any] | None = None,
     corner_summary: Mapping[str, Any] | None = None,
 ) -> GeometryDefinition:
-    """Freeze a buildable Step 2 baseline geometry from the current design state."""
+    """Freeze a buildable baseline geometry from the current design state."""
 
     study_config = build_design_config(config)
     nominal_payload = _normalize_nominal_payload(study_config, nominal_result)
@@ -122,40 +117,38 @@ def freeze_first_pass_geometry(
     policy = study_config["geometry_policy"]
     metrics = nominal_payload["metrics"]
     constraints = nominal_payload["constraints"]
+    state = build_canonical_engine_state(study_config, nominal_payload)
+    geometry_state = state.geometry
 
-    grain_length_m = float(derived["grain_length_m"])
-    port_radius_initial_m = float(derived["initial_port_radius_mm"]) * 1.0e-3
-    grain_outer_radius_raw_mm = derived.get("grain_outer_radius_mm")
-    if grain_outer_radius_raw_mm is None:
-        raise ValueError("Nominal result did not provide a grain outer radius.")
-    grain_outer_radius_m = float(grain_outer_radius_raw_mm) * 1.0e-3
+    chamber_id_m = 2.0 * geometry_state.hot_gas_radius_m
+    throat_area_m2 = math.pi * geometry_state.throat_radius_m**2
+    nozzle_exit_area_m2 = math.pi * geometry_state.exit_radius_m**2
+    throat_diameter_m = 2.0 * geometry_state.throat_radius_m
+    nozzle_exit_diameter_m = 2.0 * geometry_state.exit_radius_m
+    nozzle_area_ratio = geometry_state.area_expansion_ratio
+    grain_length_m = geometry_state.grain_length_m
+    port_radius_initial_m = geometry_state.grain_port_radius_initial_m
+    grain_outer_radius_m = geometry_state.grain_outer_radius_m
     port_count = int(derived.get("port_count", study_config["nominal"]["blowdown"]["grain"]["port_count"]))
-    radial_web_initial_m = grain_outer_radius_m - port_radius_initial_m
-
-    chamber_id_m = 2.0 * (grain_outer_radius_m + float(policy["grain_to_chamber_radial_clearance_m"]))
+    radial_web_initial_m = geometry_state.initial_web_thickness_m
     injector_face_diameter_m = chamber_id_m * float(policy["injector_face_margin_factor"])
     prechamber_enabled = bool(policy["prechamber_enabled"])
     postchamber_enabled = bool(policy["postchamber_enabled"])
-    prechamber_length_m = grain_length_m * float(policy["prechamber_length_fraction_of_grain"]) if prechamber_enabled else 0.0
-    postchamber_length_m = grain_length_m * float(policy["postchamber_length_fraction_of_grain"]) if postchamber_enabled else 0.0
-
-    throat_area_m2 = float(derived["nozzle_throat_area_mm2"]) * 1.0e-6
-    nozzle_exit_area_m2 = float(derived["nozzle_exit_area_mm2"]) * 1.0e-6
-    throat_diameter_m = diameter_from_area(throat_area_m2)
-    nozzle_exit_diameter_m = diameter_from_area(nozzle_exit_area_m2)
-    nozzle_area_ratio = nozzle_exit_area_m2 / throat_area_m2
-
+    prechamber_length_m = geometry_state.prechamber_length_m
+    postchamber_length_m = geometry_state.postchamber_length_m
+    chamber_wall_thickness_guess_m = geometry_state.shell_thickness_m
+    chamber_inner_diameter_including_liner_m = chamber_id_m
+    chamber_inner_diameter_excluding_liner_m = 2.0 * geometry_state.shell_inner_radius_m
+    chamber_outer_diameter_excluding_liner_m = 2.0 * geometry_state.shell_outer_radius_m
+    chamber_outer_diameter_including_liner_m = chamber_outer_diameter_excluding_liner_m
+    inner_liner_thickness_m = geometry_state.liner_thickness_m
+    fuel_inner_diameter_m = 2.0 * geometry_state.grain_port_radius_initial_m
+    fuel_outer_diameter_m = 2.0 * geometry_state.grain_outer_radius_m
     chamber_cross_section_area_m2 = area_from_diameter(chamber_id_m)
     injector_face_area_m2 = area_from_diameter(injector_face_diameter_m)
-    free_volume_initial_m3 = (
-        cylinder_volume_from_diameter(prechamber_length_m, chamber_id_m)
-        + cylindrical_port_volume(grain_length_m, port_radius_initial_m, port_count)
-        + cylinder_volume_from_diameter(postchamber_length_m, chamber_id_m)
-    )
-    total_chamber_length_m = (
-        float(policy["injector_plate_thickness_m"]) + prechamber_length_m + grain_length_m + postchamber_length_m
-    )
-    lstar_initial_m = free_volume_initial_m3 / throat_area_m2
+    free_volume_initial_m3 = geometry_state.hot_gas_free_volume_initial_m3
+    total_chamber_length_m = geometry_state.chamber_total_length_m
+    lstar_initial_m = geometry_state.lstar_initial_m
 
     sensitivity_metric, sensitivity_parameter, sensitivity_notes = _top_sensitivity_note(
         sensitivity_summary,
@@ -164,8 +157,12 @@ def freeze_first_pass_geometry(
     corner_cases_all_pass, corner_notes = _corner_case_summary(corner_summary)
 
     notes = [
-        "Frozen from the Step 1 nominal 0D runtime sizing outputs without changing the underlying blowdown physics.",
-        f"Injector architecture placeholder remains an axial showerhead with equivalent CdA={float(derived['injector_total_area_mm2']) * 1.0e-6:.6e} m^2.",
+        "Frozen from the nominal 0D runtime sizing outputs without changing the underlying blowdown physics.",
+        "Canonical geometry generated with the diameter-first sizing policy before any chamber-length growth was allowed.",
+        (
+            "Injector architecture is sized from oxidizer flow using a fixed hole diameter and an integer hole count "
+            f"that closes the required total oxidizer-hole area at {geometry_state.injector_total_hole_area_m2:.6e} m^2."
+        ),
     ]
     notes.extend(sensitivity_notes)
     notes.extend(corner_notes)
@@ -204,8 +201,38 @@ def freeze_first_pass_geometry(
         throat_area_m2=throat_area_m2,
         nozzle_exit_area_m2=nozzle_exit_area_m2,
         injector_equivalent_area_m2=float(derived["injector_total_area_mm2"]) * 1.0e-6,
+        chamber_inner_diameter_including_liner_m=chamber_inner_diameter_including_liner_m,
+        chamber_outer_diameter_including_liner_m=chamber_outer_diameter_including_liner_m,
+        chamber_inner_diameter_excluding_liner_m=chamber_inner_diameter_excluding_liner_m,
+        chamber_outer_diameter_excluding_liner_m=chamber_outer_diameter_excluding_liner_m,
+        fuel_inner_diameter_m=fuel_inner_diameter_m,
+        fuel_outer_diameter_m=fuel_outer_diameter_m,
+        inner_liner_thickness_m=inner_liner_thickness_m,
+        injector_hole_count=geometry_state.injector_hole_count,
+        injector_total_hole_area_m2=geometry_state.injector_total_hole_area_m2,
+        injector_hole_diameter_m=geometry_state.injector_hole_diameter_m,
+        converging_throat_half_angle_deg=geometry_state.converging_half_angle_deg,
+        diverging_throat_half_angle_deg=geometry_state.diverging_half_angle_deg,
+        throat_blend_radius_m=geometry_state.throat_blend_radius_m,
+        converging_section_length_m=geometry_state.nozzle_converging_length_m,
+        converging_section_arc_length_m=geometry_state.nozzle_converging_length_m,
+        converging_straight_length_m=geometry_state.nozzle_converging_length_m,
+        converging_blend_arc_length_m=0.0,
+        nozzle_length_m=geometry_state.nozzle_diverging_length_m,
+        nozzle_arc_length_m=geometry_state.nozzle_diverging_length_m,
+        nozzle_straight_length_m=geometry_state.nozzle_diverging_length_m,
+        nozzle_blend_arc_length_m=0.0,
+        nozzle_contour_style="conical_blended",
+        nozzle_profile={
+            "converging_half_angle_deg": geometry_state.converging_half_angle_deg,
+            "diverging_half_angle_deg": geometry_state.diverging_half_angle_deg,
+            "throat_blend_radius_m": geometry_state.throat_blend_radius_m,
+            "throat_blend_radius_factor": float(study_config["thermal"]["nozzle_geometry"]["throat_blend_radius_factor"]),
+        },
         nominal_pc_bar=float(metrics["pc_avg_bar"]) if metrics.get("pc_avg_bar") is not None else None,
         nominal_thrust_avg_n=float(metrics["thrust_avg_n"]) if metrics.get("thrust_avg_n") is not None else None,
+        nominal_isp_avg_s=float(metrics["isp_avg_s"]) if metrics.get("isp_avg_s") is not None else None,
+        nominal_burn_time_s=float(metrics["burn_time_actual_s"]) if metrics.get("burn_time_actual_s") is not None else None,
         nominal_constraint_pass=bool(constraints.get("all_pass")),
         corner_cases_all_pass=corner_cases_all_pass,
         sensitivity_driver_metric=sensitivity_metric,
@@ -220,8 +247,57 @@ def freeze_first_pass_geometry(
             "target_initial_gox_kg_m2_s": derived.get("target_initial_gox_kg_m2_s"),
             "tank_initial_pressure_bar": derived.get("tank_initial_pressure_bar"),
         },
+        engine_state=state.to_dict(),
+        geometry_valid=state.validity.geometry_valid,
+        failure_reasons=list(state.diagnostics.failure_reasons),
+        solver_report=dict(state.diagnostics.solver_report),
         notes=notes,
     )
 
-    checks, geometry_valid, warnings = evaluate_geometry_checks(geometry, policy)
-    return replace(geometry, checks=checks, geometry_valid=geometry_valid, warnings=warnings)
+    checks = {
+        "positive_major_dimensions": {
+            "passed": all(
+                value > 0.0
+                for value in (
+                    chamber_id_m,
+                    injector_face_diameter_m,
+                    grain_length_m,
+                    port_radius_initial_m,
+                    grain_outer_radius_m,
+                    throat_diameter_m,
+                    nozzle_exit_diameter_m,
+                )
+            ),
+            "hard": True,
+            "value": {
+                "chamber_id_m": chamber_id_m,
+                "grain_length_m": grain_length_m,
+                "throat_diameter_m": throat_diameter_m,
+                "nozzle_exit_diameter_m": nozzle_exit_diameter_m,
+            },
+            "limit": "> 0",
+            "note": "All frozen diameters, radii, and lengths must remain positive.",
+        },
+        "geometry_valid": {
+            "passed": state.validity.geometry_valid,
+            "hard": True,
+            "value": state.validity.geometry_valid,
+            "limit": {"required": True},
+            "note": "Canonical geometry must satisfy all hard packaging, web, L*, and nozzle constraints.",
+        }
+    }
+    return replace(
+        geometry,
+        checks=checks,
+        geometry_valid=state.validity.geometry_valid,
+        warnings=list(state.diagnostics.warnings),
+        notes=[
+            *geometry.notes,
+            (
+                "Nozzle contour frozen as a conical converging-throat-diverging profile with a finite throat blend "
+                f"(r_blend={geometry_state.throat_blend_radius_m * 1000.0:.1f} mm, "
+                f"alpha={geometry_state.converging_half_angle_deg:.1f} deg half-angle, "
+                f"beta={geometry_state.diverging_half_angle_deg:.1f} deg half-angle)."
+            ),
+        ],
+    )

@@ -3,66 +3,176 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BEARS Simulation Detail</title>
+    <title>BEARS Workflow Step Detail</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <div class="page-shell">
+    <div id="app" class="page-shell" v-cloak>
       <main class="detail-shell">
         <section class="panel detail-hero">
           <div class="detail-hero-top">
             <a class="button" href="/">Back To Dashboard</a>
           </div>
-          <div id="detailHeader">
-            <div class="empty-state">Loading latest simulation detail...</div>
+          <div v-if="error" class="status-card">
+            <div class="status-badge status-error">error</div>
+            <p class="status-message">{{ error }}</p>
+          </div>
+          <div v-else-if="!payload" class="empty-state">Loading workflow step detail...</div>
+          <template v-else>
+            <p class="eyebrow">Workflow Step</p>
+            <h1>{{ payload.title }}</h1>
+            <p class="hero-text">{{ payload.description || "" }}</p>
+            <div class="run-meta">
+              <div><strong>Step ID:</strong> <code>{{ payload.step || "" }}</code></div>
+              <div><strong>Step Kind:</strong> <code>{{ payload.kind || "" }}</code></div>
+              <div><strong>Phase:</strong> <code>{{ payload.phase || "" }}</code></div>
+              <div><strong>Run ID:</strong> <code>{{ payload.run_id || "n/a" }}</code></div>
+              <div><strong>Requested Mode:</strong> <code>{{ payload.requested_mode || "n/a" }}</code></div>
+              <div><strong>Run Root:</strong> <code>{{ payload.root || "n/a" }}</code></div>
+            </div>
+            <p class="hero-text">{{ latestRunText }}</p>
+          </template>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Step Context</h2>
+            <p>This page shows what the step consumes, what it writes, and where those outputs are fed next.</p>
+          </div>
+          <div class="workflow-step-card">
+            <div v-if="!payload" class="empty-state">No step context available.</div>
+            <template v-else>
+              <div class="workflow-step-columns">
+                <div class="workflow-step-column">
+                  <div class="workflow-column-label">Inputs</div>
+                  <ul v-if="payload.inputs && payload.inputs.length" class="workflow-io-list">
+                    <io-item v-for="item in payload.inputs" :key="ioItemKey(item)" :item="item"></io-item>
+                  </ul>
+                  <div v-else class="workflow-list-empty">None</div>
+                </div>
+                <div class="workflow-step-column">
+                  <div class="workflow-column-label">Outputs</div>
+                  <ul v-if="payload.outputs && payload.outputs.length" class="workflow-io-list">
+                    <io-item v-for="item in payload.outputs" :key="ioItemKey(item)" :item="item"></io-item>
+                  </ul>
+                  <div v-else class="workflow-list-empty">None</div>
+                </div>
+              </div>
+              <div class="workflow-step-column">
+                <div class="workflow-column-label">Feeds Into</div>
+                <ul v-if="payload.downstream && payload.downstream.length" class="workflow-feed-list">
+                  <li v-for="item in payload.downstream" :key="`${payload.step}-${item.id}`">
+                    <a :href="item.detail_href || `/simulation.html?step=${item.id}`">{{ item.title }}</a>
+                    <span>{{ item.label }}</span>
+                  </li>
+                </ul>
+                <div v-else class="workflow-list-empty">No downstream consumers listed.</div>
+              </div>
+            </template>
           </div>
         </section>
 
         <section class="panel">
           <div class="panel-header">
             <h2>Persisted Metrics</h2>
-            <p>These values are reconstructed from the latest output artifacts for the selected simulation.</p>
+            <p>These values are reconstructed from the latest persisted artifacts for the selected step.</p>
           </div>
-          <div id="detailMetricGrid" class="metric-grid">
-            <div class="empty-state">No persisted metrics available.</div>
+          <div class="metric-grid">
+            <div v-if="!metrics.length" class="empty-state">No persisted metrics available.</div>
+            <article
+              v-for="metric in metrics"
+              :key="metric.label"
+              class="metric-card"
+              :class="`metric-${metric.emphasis || 'neutral'}`"
+            >
+              <div class="metric-label">{{ metric.label }}</div>
+              <div class="metric-value">{{ `${metric.value ?? "n/a"}${metric.unit ? ` ${metric.unit}` : ""}` }}</div>
+            </article>
           </div>
         </section>
 
         <section class="panel">
           <div class="panel-header">
             <h2>Interactive Charts</h2>
-            <p>Interactive plots rebuilt from the latest persisted CSV and JSON artifacts.</p>
+            <p>Full-size charts are built in the browser from persisted CSV rows loaded directly from the latest run.</p>
           </div>
-          <div id="detailChartGrid" class="detail-chart-grid">
-            <div class="empty-state">No interactive charts available.</div>
+          <div class="detail-chart-grid">
+            <div v-if="!renderedCharts.length" class="empty-state">No persisted CSV data was available to build charts for this step.</div>
+            <chart-card v-for="chart in renderedCharts" :key="chart.title + (chart.source_path || '')" :chart="chart"></chart-card>
           </div>
         </section>
 
         <section class="panel">
           <div class="panel-header">
-            <h2>Persisted SVGs</h2>
-            <p>Reference exports generated by the workflow for this specific simulation section.</p>
+            <h2>Full Step Values</h2>
+            <p>Persisted input payloads and generated step values are rendered inline here, including complete JSON bodies and CSV rows.</p>
           </div>
-          <div id="detailSvgGrid" class="chart-grid">
-            <div class="empty-state">No persisted SVG exports available.</div>
+          <div class="value-archive">
+            <section v-for="group in valueGroups" :key="group.title" class="value-group">
+              <div class="value-group-header">
+                <h3>{{ group.title }}</h3>
+                <p>{{ group.description }}</p>
+              </div>
+              <div class="detail-source-grid">
+                <div v-if="!group.cards.length" class="empty-state">{{ group.emptyText }}</div>
+                <artifact-card v-for="card in group.cards" :key="card.cardKey" :card="card"></artifact-card>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Data Sources</h2>
+            <p>These are the CSV and JSON artifacts currently available for this workflow step.</p>
+          </div>
+          <div class="detail-source-grid">
+            <div v-if="!sourceCards.length" class="empty-state">No persisted data sources available.</div>
+            <artifact-card v-for="card in sourceCards" :key="card.cardKey" :card="card"></artifact-card>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Config Snapshot</h2>
+            <p>Config nodes show their current default editor payload here. Workflow steps show this panel only when they are config-backed.</p>
+          </div>
+          <div class="latest-run-card">
+            <div v-if="!configSnapshot" class="empty-state">No config payload attached to this step.</div>
+            <template v-else>
+              <div class="run-meta">
+                <div><strong>Source:</strong> <code>{{ configSnapshot.source || "" }}</code></div>
+              </div>
+              <pre class="json-preview">{{ prettyJson(configSnapshot.content) }}</pre>
+            </template>
           </div>
         </section>
 
         <section class="panel">
           <div class="panel-header">
             <h2>Notes And Downloads</h2>
-            <p>Warnings, recommendations, and direct artifact downloads for this section.</p>
+            <p>Warnings, recommendations, SVG exports, and direct artifact downloads for this step.</p>
           </div>
-          <div id="detailNotesCard" class="latest-run-card">
-            <div class="empty-state">No notes available.</div>
+          <div class="latest-run-card">
+            <ul v-if="notes.length" class="artifact-list">
+              <li v-for="note in notes" :key="note">{{ note }}</li>
+            </ul>
+            <div v-else class="empty-state">No notes available.</div>
           </div>
-          <div id="detailDownloadsCard" class="latest-run-card">
-            <div class="empty-state">No downloads available.</div>
+          <div class="latest-run-card">
+            <ul v-if="downloads.length" class="artifact-list">
+              <li v-for="item in downloads" :key="item.relative_path">
+                <a :href="latestRunAssetUrl(item.relative_path)">{{ item.relative_path }}</a>
+              </li>
+            </ul>
+            <div v-else class="empty-state">No downloads available.</div>
           </div>
         </section>
       </main>
     </div>
 
+    <script src="vendor/vue.global.prod.js"></script>
+    <script src="shared.js"></script>
     <script src="simulation.js"></script>
   </body>
 </html>

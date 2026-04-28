@@ -132,3 +132,138 @@ def write_horizontal_bar_chart(path: str | Path, entries: Sequence[Mapping[str, 
 
     body.append(_text(width / 2, height - 16, x_label, size=14, weight="bold"))
     return _write_svg(Path(path), width, height, body)
+
+
+def write_grouped_horizontal_bar_chart(
+    path: str | Path,
+    entries: Sequence[Mapping[str, object]],
+    series_labels: Sequence[str],
+    title: str,
+    x_label: str,
+) -> Path:
+    width = 1200
+    row_group_height = max(52, 24 * max(len(series_labels), 1) + 14)
+    height = max(340, 140 + len(entries) * row_group_height)
+    plot_left = 260
+    plot_right = 1080
+    plot_top = 84
+    body: list[str] = [_text(width / 2, 30, title, size=24, weight="bold")]
+
+    values = [
+        abs(float(entry.get("values", {}).get(series_label, 0.0)))
+        for entry in entries
+        for series_label in series_labels
+    ] or [1.0]
+    x_min = 0.0
+    x_max = max(values) * 1.1
+
+    for tick in range(6):
+        ratio = tick / 5.0
+        x = plot_left + ratio * (plot_right - plot_left)
+        value = x_min + ratio * (x_max - x_min)
+        body.append(f'<line x1="{x:.2f}" y1="{plot_top - 10}" x2="{x:.2f}" y2="{height - 44}" stroke="#e2e8f0"/>')
+        body.append(_text(x, height - 22, f"{value:.4f}", size=11))
+
+    for entry_index, entry in enumerate(entries):
+        label = str(entry.get("label", f"Row {entry_index + 1}"))
+        values_by_series = dict(entry.get("values", {}))
+        group_y = plot_top + entry_index * row_group_height
+        group_center_y = group_y + (len(series_labels) * 24) / 2.0
+        body.append(_text(plot_left - 12, group_center_y + 4, label, size=12, anchor="end"))
+        for series_index, series_label in enumerate(series_labels):
+            value = abs(float(values_by_series.get(series_label, 0.0)))
+            y = group_y + series_index * 24
+            color = COLORS[series_index % len(COLORS)]
+            bar_right = _scale(value, x_min, x_max, plot_left, plot_right)
+            body.append(
+                f'<rect x="{plot_left}" y="{y + 4}" width="{max(bar_right - plot_left, 1):.2f}" height="16" rx="7" ry="7" fill="{color}" opacity="0.85"/>'
+            )
+            body.append(_text(bar_right + 8, y + 17, f"{value:.4f}", size=10, anchor="start"))
+
+    legend_y = 54
+    for series_index, series_label in enumerate(series_labels):
+        color = COLORS[series_index % len(COLORS)]
+        x0 = 280 + series_index * 180
+        body.append(f'<rect x="{x0}" y="{legend_y - 11}" width="18" height="10" rx="4" ry="4" fill="{color}" opacity="0.85"/>')
+        body.append(_text(x0 + 26, legend_y - 2, str(series_label), size=12, anchor="start"))
+
+    body.append(_text(width / 2, height - 8, x_label, size=14, weight="bold"))
+    return _write_svg(Path(path), width, height, body)
+
+
+def write_scatter_plot(
+    path: str | Path,
+    series: Sequence[Mapping[str, object]],
+    title: str,
+    x_label: str,
+    y_label: str,
+    *,
+    reference_line: bool = False,
+) -> Path:
+    width = 1200
+    height = 760
+    plot_left = 90
+    plot_right = 900
+    plot_top = 70
+    plot_bottom = 650
+    body: list[str] = []
+
+    all_x = [float(x) for item in series for x in item["x"]]
+    all_y = [float(y) for item in series for y in item["y"]]
+    if not all_x or not all_y:
+        return _write_svg(
+            Path(path),
+            width,
+            height,
+            [
+                _text(width / 2, 34, title, size=24, weight="bold"),
+                _text(width / 2, height / 2, "No data available", size=18, weight="bold"),
+            ],
+        )
+    x_min, x_max = _padded_range(all_x)
+    y_min, y_max = _padded_range(all_y)
+    if reference_line:
+        common_min = min(x_min, y_min)
+        common_max = max(x_max, y_max)
+        x_min = y_min = common_min
+        x_max = y_max = common_max
+
+    body.append(f'<rect x="{plot_left}" y="{plot_top}" width="{plot_right - plot_left}" height="{plot_bottom - plot_top}" fill="#f8fafc" stroke="#cbd5e1"/>')
+    body.append(_text(width / 2, 34, title, size=24, weight="bold"))
+    body.append(_text(width / 2, height - 18, x_label, size=14, weight="bold"))
+    body.append(_text(28, 44, y_label, size=14, weight="bold", anchor="start"))
+
+    for tick in range(6):
+        ratio = tick / 5.0
+        y = plot_top + ratio * (plot_bottom - plot_top)
+        value = y_max - ratio * (y_max - y_min)
+        body.append(f'<line x1="{plot_left}" y1="{y:.2f}" x2="{plot_right}" y2="{y:.2f}" stroke="#e2e8f0"/>')
+        body.append(_text(plot_left - 10, y + 4, f"{value:.2f}", size=11, anchor="end"))
+
+    for tick in range(6):
+        ratio = tick / 5.0
+        x = plot_left + ratio * (plot_right - plot_left)
+        value = x_min + ratio * (x_max - x_min)
+        body.append(f'<line x1="{x:.2f}" y1="{plot_top}" x2="{x:.2f}" y2="{plot_bottom}" stroke="#f1f5f9"/>')
+        body.append(_text(x, plot_bottom + 18, f"{value:.2f}", size=11))
+
+    if reference_line:
+        line_start_x = _scale(x_min, x_min, x_max, plot_left, plot_right)
+        line_start_y = _scale(y_min, y_min, y_max, plot_bottom, plot_top)
+        line_end_x = _scale(x_max, x_min, x_max, plot_left, plot_right)
+        line_end_y = _scale(y_max, y_min, y_max, plot_bottom, plot_top)
+        body.append(
+            f'<line x1="{line_start_x:.2f}" y1="{line_start_y:.2f}" x2="{line_end_x:.2f}" y2="{line_end_y:.2f}" stroke="#9ca3af" stroke-width="2" stroke-dasharray="8 6"/>'
+        )
+
+    for index, item in enumerate(series):
+        color = item.get("color", COLORS[index % len(COLORS)])
+        for x_value, y_value in zip(item["x"], item["y"]):
+            x = _scale(float(x_value), x_min, x_max, plot_left, plot_right)
+            y = _scale(float(y_value), y_min, y_max, plot_bottom, plot_top)
+            body.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="5" fill="{color}" opacity="0.85"/>')
+        legend_y = plot_top + 24 + index * 24
+        body.append(f'<circle cx="955" cy="{legend_y - 4:.2f}" r="6" fill="{color}" opacity="0.85"/>')
+        body.append(_text(970, legend_y, str(item["label"]), size=12, anchor="start"))
+
+    return _write_svg(Path(path), width, height, body)

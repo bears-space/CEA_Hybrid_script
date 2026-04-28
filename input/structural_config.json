@@ -1,0 +1,83 @@
+{
+  "load_source": "corner_case_envelope",
+  "geometry_input_source": "auto",
+  "geometry_path": "output/geometry/geometry_definition.json",
+  "auto_freeze_geometry_if_missing": true,
+  "injector_geometry_input_source": "auto",
+  "injector_geometry_path": "output/injector_design/injector_geometry.json",
+  "auto_synthesize_injector_if_missing": true,
+  "allow_missing_injector_geometry": true,
+  "include_nominal_initial_case": true,
+  "include_nominal_peak_case": true,
+  "include_corner_case_envelope": true,
+  "include_internal_ballistics_peak_case": true,
+  "allowable_basis": "yield_based",
+  "closure_style": "bolted_flange",
+  "component_materials": {
+    "chamber_wall": "aluminum_6061_t6",
+    "forward_closure": "aluminum_6061_t6",
+    "aft_closure": "aluminum_6061_t6",
+    "injector_plate": "aluminum_6061_t6",
+    "nozzle_mount": "aluminum_6061_t6",
+    "fasteners": "steel_4140_qt"
+  },
+  "custom_materials": {},
+  "design_policy": {
+    "yield_safety_factor": 1.5,
+    "ultimate_safety_factor": 2.0,
+    "proof_factor": 1.25,
+    "burst_factor": 2.0,
+    "thin_wall_switch_ratio": 10.0,
+    "minimum_wall_thickness_m": 0.0025,
+    "minimum_flange_thickness_m": 0.004,
+    "thickness_roundup_increment_m": 0.0005,
+    "default_bolt_preload_fraction": 0.65,
+    "closure_model_type": "clamped_circular_plate",
+    "injector_plate_model_type": "clamped_circular_plate",
+    "nozzle_mount_model_type": "clamped_circular_plate",
+    "mass_roundup_factor": 1.1,
+    "corrosion_or_manufacturing_allowance_m": 0.0005
+  },
+  "forward_closure": {
+    "loaded_diameter_scale": 1.0,
+    "loaded_diameter_m": null,
+    "minimum_thickness_m": null
+  },
+  "aft_closure": {
+    "loaded_diameter_scale": 1.0,
+    "loaded_diameter_m": null,
+    "minimum_thickness_m": null
+  },
+  "injector_plate": {
+    "unsupported_diameter_scale": 0.92,
+    "unsupported_diameter_m": null,
+    "selected_thickness_m": null,
+    "open_area_warning_threshold": 0.25,
+    "perforation_stress_multiplier_factor": 1.5
+  },
+  "fasteners": {
+    "fastener_count": 12,
+    "nominal_diameter_m": 0.00635,
+    "tensile_area_factor": 0.75,
+    "joint_load_fraction": 1.0,
+    "grip_length_m": 0.03
+  },
+  "nozzle_mount": {
+    "loaded_diameter_scale": 2.0,
+    "loaded_diameter_m": null,
+    "minimum_thickness_m": null,
+    "separating_force_multiplier": 1.0
+  },
+  "grain_support": {
+    "retention_concept": "support_rings",
+    "minimum_clearance_m": 0.001,
+    "minimum_final_web_m": 0.001,
+    "max_grain_slenderness_ratio": 15.0,
+    "max_web_slenderness_ratio": 80.0
+  },
+  "user_override_load_case": {
+    "case_name": "user_override",
+    "source_stage": "user_override",
+    "notes": []
+  }
+}

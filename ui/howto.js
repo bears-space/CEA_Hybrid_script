@@ -1,110 +1,27 @@
-function $(id) {
-  return document.getElementById(id);
-}
-
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || `Request failed: ${response.status}`);
-  }
-  return payload;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+const { createApp } = Vue;
+const { escapeHtml, requestJson } = window.WorkflowUiShared;
 
 function groupNodesByPhase(phases, nodes) {
-  return phases.map((phase) => ({
+  return (phases || []).map((phase) => ({
     ...phase,
-    nodes: nodes.filter((node) => node.phase === phase.key),
+    nodes: (nodes || []).filter((node) => node.phase === phase.key),
   }));
 }
 
 function downstreamMap(nodes, edges) {
-  const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
-  const map = new Map(nodes.map((node) => [node.id, []]));
-  edges.forEach((edge) => {
+  const nodeIndex = new Map((nodes || []).map((node) => [node.id, node]));
+  const map = new Map((nodes || []).map((node) => [node.id, []]));
+  (edges || []).forEach((edge) => {
     const target = nodeIndex.get(edge.to);
     if (map.has(edge.from) && target) {
       map.get(edge.from).push({
         id: target.id,
-        title: target.title,
         label: edge.label,
+        title: target.title,
       });
     }
   });
-  return map;
-}
-
-function inputMarkup(items) {
-  if (!items?.length) {
-    return '<div class="workflow-list-empty">None</div>';
-  }
-  return `<ul class="workflow-io-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
-}
-
-function outputFeedMarkup(items) {
-  if (!items?.length) {
-    return '<div class="workflow-list-empty">No downstream consumers listed.</div>';
-  }
-  return `<ul class="workflow-feed-list">${items.map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.label)}</span></li>`).join("")}</ul>`;
-}
-
-function renderStepCards(phases, nodes, edges) {
-  const host = $("workflowStepGrid");
-  if (!phases?.length || !nodes?.length) {
-    host.innerHTML = '<div class="empty-state">Workflow metadata is not available.</div>';
-    return;
-  }
-
-  const feeds = downstreamMap(nodes, edges || []);
-  const grouped = groupNodesByPhase(phases, nodes);
-
-  host.innerHTML = grouped.map((phase) => `
-    <section class="workflow-phase-section">
-      <div class="workflow-phase-header">
-        <p class="eyebrow">Phase</p>
-        <h3>${escapeHtml(phase.title)}</h3>
-      </div>
-      <div class="workflow-phase-grid">
-        ${phase.nodes.map((node) => `
-          <article class="workflow-step-card workflow-step-${escapeHtml(node.kind || "workflow")}">
-            <div class="workflow-step-top">
-              <div>
-                <div class="workflow-step-kind">${escapeHtml(node.kind || "workflow")}</div>
-                <h4>${escapeHtml(node.title)}</h4>
-              </div>
-            </div>
-            <p class="workflow-step-description">${escapeHtml(node.description || "")}</p>
-            <div class="workflow-step-columns">
-              <div class="workflow-step-column">
-                <div class="workflow-column-label">Inputs</div>
-                ${inputMarkup(node.inputs || [])}
-              </div>
-              <div class="workflow-step-column">
-                <div class="workflow-column-label">Outputs</div>
-                ${inputMarkup(node.outputs || [])}
-              </div>
-            </div>
-            <div class="workflow-step-column">
-              <div class="workflow-column-label">Feeds Into</div>
-              ${outputFeedMarkup(feeds.get(node.id) || [])}
-            </div>
-          </article>
-        `).join("")}
-      </div>
-    </section>
-  `).join("");
+  return Object.fromEntries(map.entries());
 }
 
 function measureCanvas(phases) {
@@ -119,9 +36,9 @@ function measureCanvas(phases) {
     height: headerHeight + maxNodes * nodeHeight + Math.max(0, maxNodes - 1) * nodeGap + 28,
     phaseWidth,
     gutter,
+    headerHeight,
     nodeHeight,
     nodeGap,
-    headerHeight,
   };
 }
 
@@ -169,7 +86,7 @@ function wrapSvgText(text, lineLength) {
 function nodePreview(node) {
   const inputs = node.inputs?.length ? `${node.inputs.length} inputs` : "no inputs";
   const outputs = node.outputs?.length ? `${node.outputs.length} outputs` : "no outputs";
-  return `${inputs} • ${outputs}`;
+  return `${inputs} - ${outputs}`;
 }
 
 function edgePath(from, to) {
@@ -181,13 +98,10 @@ function edgePath(from, to) {
   return `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`;
 }
 
-function renderWorkflowMap(phases, nodes, edges) {
-  const host = $("workflowMapCard");
+function workflowMapMarkup(phases, nodes, edges) {
   if (!phases?.length || !nodes?.length) {
-    host.innerHTML = '<div class="empty-state">Workflow graph is not available.</div>';
-    return;
+    return '<div class="empty-state">Workflow graph is not available.</div>';
   }
-
   const grouped = groupNodesByPhase(phases, nodes);
   const { canvas, positions } = buildGraphLayout(grouped);
 
@@ -220,7 +134,7 @@ function renderWorkflowMap(phases, nodes, edges) {
     `;
   }).join("");
 
-  const nodeMarkup = nodes.map((node) => {
+  const nodeMarkup = (nodes || []).map((node) => {
     const box = positions.get(node.id);
     if (!box) {
       return "";
@@ -234,17 +148,19 @@ function renderWorkflowMap(phases, nodes, edges) {
       <text x="${box.x + 16}" y="${box.y + 88 + index * 15}" class="workflow-node-meta">${escapeHtml(line)}</text>
     `).join("");
     return `
-      <g>
-        <rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="18" class="workflow-node workflow-node-${escapeHtml(node.kind || "workflow")}"/>
-        <text x="${box.x + 16}" y="${box.y + 18}" class="workflow-node-kind">${escapeHtml((node.kind || "workflow").toUpperCase())}</text>
-        ${title}
-        ${description}
-        <title>${escapeHtml(node.description || "")}</title>
-      </g>
+      <a href="${escapeHtml(node.detail_href || `/simulation.html?step=${node.id}`)}">
+        <g>
+          <rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="18" class="workflow-node workflow-node-${escapeHtml(node.kind || "workflow")}"/>
+          <text x="${box.x + 16}" y="${box.y + 18}" class="workflow-node-kind">${escapeHtml((node.kind || "workflow").toUpperCase())}</text>
+          ${title}
+          ${description}
+          <title>${escapeHtml(node.description || "")}</title>
+        </g>
+      </a>
     `;
   }).join("");
 
-  host.innerHTML = `
+  return `
     <div class="workflow-map-meta">
       <div class="workflow-map-legend">
         <span class="workflow-legend-chip workflow-legend-config">Config Input</span>
@@ -262,15 +178,37 @@ function renderWorkflowMap(phases, nodes, edges) {
   `;
 }
 
-async function init() {
-  const payload = await requestJson("/api/workflow-map");
-  renderWorkflowMap(payload.phases || [], payload.nodes || [], payload.edges || []);
-  renderStepCards(payload.phases || [], payload.nodes || [], payload.edges || []);
-}
-
-window.addEventListener("DOMContentLoaded", () => {
-  init().catch((error) => {
-    $("workflowMapCard").innerHTML = `<div class="status-card"><div class="status-badge status-error">error</div><p class="status-message">${escapeHtml(error.message)}</p></div>`;
-    $("workflowStepGrid").innerHTML = "";
-  });
-});
+createApp({
+  data() {
+    return {
+      error: "",
+      payload: null,
+    };
+  },
+  computed: {
+    downstreamById() {
+      return downstreamMap(this.payload?.nodes || [], this.payload?.edges || []);
+    },
+    phaseGroups() {
+      return groupNodesByPhase(this.payload?.phases || [], this.payload?.nodes || []);
+    },
+    workflowMapMarkup() {
+      return workflowMapMarkup(this.payload?.phases || [], this.payload?.nodes || [], this.payload?.edges || []);
+    },
+  },
+  methods: {
+    ioItemKey(item) {
+      if (typeof item === "string") {
+        return item;
+      }
+      return `${item?.name || "unknown"}-${item?.description || ""}`;
+    },
+  },
+  async mounted() {
+    try {
+      this.payload = await requestJson("/api/workflow-map");
+    } catch (error) {
+      this.error = error.message;
+    }
+  },
+}).mount("#app");

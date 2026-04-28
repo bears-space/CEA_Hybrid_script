@@ -1,631 +1,222 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BEARS Hybrid Rocket Analysis</title>
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body data-theme="dark">
-  <div class="app-frame">
-    <header class="topbar reveal">
-      <div class="brand-lockup">
-        <img class="brand-logo" src="/assets/bears-logo.png" alt="BEARS logo">
-        <div class="brand-copy">
-          <p class="eyebrow">BEARS Propulsion</p>
-          <h1>Hybrid Rocket Analysis</h1>
-          <p class="lede">
-            Evaluate NASA CEA nozzle and mixture sweeps for an N2O and paraffin engine with ABS structure, then inspect interactive plots, raw CEA result points, and a preliminary 0D blowdown model seeded from the best CEA case.
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BEARS Hybrid Workflow</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div id="app" class="page-shell" v-cloak>
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">BEARS Hybrid Engine Workflow</p>
+          <h1>Integrated design, injector, hydraulic, structural, thermal, nozzle, CFD, and test-progression workflow dashboard.</h1>
+          <p class="hero-text">
+            Run thermochemistry, nominal performance, geometry, internal ballistics, injector design, hydraulic validation, structural sizing, thermal sizing, nozzle off-design checks, CFD planning/correction workflows, and staged test-progression analysis
+            from one UI. All artifacts land under a consolidated run root and reuse the same workflow runner as the CLI.
           </p>
+          <div class="button-row hero-actions">
+            <a class="button" href="howto.html">How To And Workflow Map</a>
+          </div>
         </div>
-      </div>
-      <div class="topbar-meta">
-        <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="true" aria-label="Switch color theme">
-          <span class="theme-toggle-label">Dark mode</span>
-          <span id="themeToggleValue" class="theme-toggle-value">On</span>
-        </button>
-        <div class="meta-item">
-          <span class="meta-label">Solver</span>
-          <span class="meta-value">NASA CEA</span>
+        <div class="hero-mark">
+          <img src="assets/bears-logo.png" alt="BEARS logo">
         </div>
-        <div class="meta-item">
-          <span class="meta-label">Engine</span>
-          <span class="meta-value">N2O / Paraffin + ABS</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label">Units</span>
-          <span class="meta-value">SI Internal</span>
-        </div>
-      </div>
-    </header>
+      </header>
 
-    <div class="workspace">
-      <aside class="sidebar reveal">
-        <section class="panel intro-panel">
-          <h2>Analysis Setup</h2>
-          <p>
-            Set the CEA chamber condition and sweep ranges, then configure the preliminary 0D blowdown model that can run automatically from the highest-Isp CEA case.
-          </p>
-        </section>
-
-        <form id="sweepForm" class="panel form-panel">
-          <section class="form-section">
-            <div class="section-header">
-              <h3>Chamber Condition</h3>
-              <p>Target chamber pressure goes into CEA; thrust and exit diameter are used only for post-CEA nozzle sizing.</p>
-            </div>
-            <div class="field-grid">
-              <label class="field">
-                <span class="field-label">Target Thrust [N]</span>
-                <input id="target_thrust_n" type="number" step="1" min="1">
-              </label>
-              <label class="field">
-                <span class="field-label">Max Exit Diameter [cm]</span>
-                <input id="max_exit_diameter_cm" type="number" step="0.1" min="0.1">
-              </label>
-              <label class="field">
-                <span class="field-label">Target Chamber Pressure [bar]</span>
-                <input id="pc_bar" type="number" step="1" min="1">
-              </label>
-              <label class="field">
-                <span class="field-label">
-                  Desired Infill [%]
-                  <button
-                    class="info-dot"
-                    type="button"
-                    data-tip="This maps directly to the ABS volume-fraction input. A value of 10% means the backend evaluates one ABS volume fraction of 0.10."
-                    aria-label="Explain desired infill"
-                  >i</button>
-                </span>
-                <input id="desired_infill_percent" type="number" step="1" min="0" max="100" value="10">
-              </label>
-            </div>
-          </section>
-
-          <section class="form-section">
-            <div class="section-header">
-              <h3>Ae/At Sweep</h3>
-              <p>Defaults to start 1, step 1, and an upper limit determined by the selected simulation cap.</p>
-            </div>
-          </section>
-
-          <details class="advanced-panel">
-            <summary>Advanced options</summary>
-            <section class="form-section advanced-section">
-              <div class="section-header">
-                <h3>Simulation Cap</h3>
-                <p>Limit the sweep by calculated exit diameter or by an explicit maximum area ratio.</p>
-              </div>
-              <div class="field-grid two-up">
-                <label class="field">
-                  <span class="field-label">Cap Mode</span>
-                  <select id="ae_at_cap_mode">
-                    <option value="exit_diameter">Max exit diameter</option>
-                    <option value="area_ratio">Max area ratio</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field-label">Max Ae/At [-]</span>
-                  <input id="max_area_ratio" type="number" step="any" min="1.0001">
-                </label>
-              </div>
-            </section>
-
-            <section class="form-section advanced-section">
-              <label class="checkbox-field">
-                <input id="ae_at_custom_enabled" type="checkbox">
-                <span>Enable custom Ae/At sweep</span>
-              </label>
-              <fieldset id="aeAtCustomFields" class="advanced-fieldset" disabled>
-                <div class="field-grid three-up">
-                  <label class="field">
-                    <span class="field-label">Start</span>
-                    <input id="ae_at_start" type="number" step="any" min="1">
-                  </label>
-                  <label class="field">
-                    <span class="field-label">End</span>
-                    <input id="ae_at_stop" type="number" step="any" min="1">
-                  </label>
-                  <label class="field">
-                    <span class="field-label">Step</span>
-                    <input id="ae_at_step" type="number" step="any" min="0.0001">
-                  </label>
-                </div>
-              </fieldset>
-            </section>
-
-            <section class="form-section advanced-section">
-              <div class="section-header">
-                <h3>O/F Sweep</h3>
-                <p>Oxidizer-to-fuel mass-ratio range scanned at each area ratio.</p>
-              </div>
-              <div class="field-grid three-up">
-                <label class="field">
-                  <span class="field-label">Start</span>
-                  <input id="of_start" type="number" step="0.1" min="0.1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Stop</span>
-                  <input id="of_stop" type="number" step="0.1" min="0.1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Count</span>
-                  <input id="of_count" type="number" step="1" min="3">
-                </label>
-              </div>
-            </section>
-
-            <section class="form-section advanced-section">
-              <div class="section-header">
-                <h3>Reactant Temperatures</h3>
-                <p>Fuel and oxidizer temperatures passed separately to CEA.</p>
-              </div>
-              <div class="field-grid two-up">
-                <label class="field">
-                  <span class="field-label">Fuel Temperature [K]</span>
-                  <input id="fuel_temperature_k" type="number" step="0.01" min="1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Oxidizer Temperature [K]</span>
-                  <input id="oxidizer_temperature_k" type="number" step="0.01" min="1">
-                </label>
-              </div>
-            </section>
-            <section id="blowdownAdvancedControls" class="form-section advanced-section">
-              <div class="section-header">
-                <h3>Preliminary 0D Blowdown Model</h3>
-                <p>Advanced and manual setup for the preliminary 0D blowdown model. These controls stay under the shared advanced dropdown and remain separate from the CEA sections.</p>
-              </div>
-              <div class="section-header">
-                <h3>Advanced / Manual Overrides</h3>
-                <p>These controls are hidden in basic mode. Enable an override to stop auto-deriving that field.</p>
-              </div>
-              <div class="section-header">
-                <h3>Advanced Policy And Empirical Inputs</h3>
-                <p>These fields stay out of basic mode. In advanced mode they replace the project defaults and presets used by the basic first-pass sizing flow.</p>
-              </div>
-              <div class="field-grid three-up">
-                <label class="field">
-                  <span class="field-label">Usable Oxidizer Fraction [-]</span>
-                  <input id="blowdown_tank_usable_oxidizer_fraction" type="number" step="0.01" min="0.01" max="1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Fuel Usable Fraction [-]</span>
-                  <input id="blowdown_grain_fuel_usable_fraction" type="number" step="0.01" min="0.01" max="1">
-                </label>
-                <div class="field read-only-callout">
-                  <span class="field-label">Regression Preset</span>
-                  <p class="field-note">The basic-mode regression preset selector remains the source of truth. Use <strong>Custom</strong> there if you want the advanced `a` and `n` values below to take effect.</p>
-                </div>
-                <label class="field">
-                  <span class="field-label">Regression Coefficient a [SI]</span>
-                  <input id="blowdown_grain_a_reg_si" type="number" step="any" min="0.0000001">
-                </label>
-                <label class="field">
-                  <span class="field-label">Regression Exponent n [-]</span>
-                  <input id="blowdown_grain_n_reg" type="number" step="0.01" min="0.01">
-                </label>
-                <label class="field">
-                  <span class="field-label">Port Count</span>
-                  <input id="blowdown_grain_port_count" type="number" step="1" min="1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Injector Cd [-]</span>
-                  <input id="blowdown_injector_cd" type="number" step="0.01" min="0.01">
-                </label>
-                <label class="field">
-                  <span class="field-label">Injector Hole Count</span>
-                  <input id="blowdown_injector_hole_count" type="number" step="1" min="1">
-                </label>
-                <div class="field read-only-callout">
-                  <span class="field-label">Injector Policy</span>
-                  <p class="field-note">The basic-mode injector pressure-drop policy selector remains the source of truth. Advanced mode replaces it with the detailed delta-p controls below.</p>
-                </div>
-                <label class="field">
-                  <span class="field-label">Injector Delta-p Mode</span>
-                  <select id="blowdown_injector_delta_p_mode">
-                    <option value="fraction_of_pc">Fraction of chamber pressure</option>
-                    <option value="explicit">Explicit delta-p</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field-label">Injector Delta-p [bar]</span>
-                  <input id="blowdown_injector_delta_p_pa" type="number" step="0.1" min="0.1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Injector Delta-p / Pc [-]</span>
-                  <input id="blowdown_injector_delta_p_fraction_of_pc" type="number" step="0.01" min="0.01">
-                </label>
-              </div>
-              <div class="field-note">
-                When the regression preset is <strong>Custom</strong>, the advanced `a` and `n` inputs are used. Otherwise the selected project preset supplies those values.
-              </div>
-              <div class="section-header">
-                <h3>Advanced Geometry Overrides</h3>
-                <p>These fields override the first-pass tank, injector, and grain geometry estimates directly.</p>
-              </div>
-              <div class="field-grid three-up">
-                <label class="field">
-                  <span class="field-label">Tank Volume Override [L]</span>
-                  <input id="blowdown_tank_volume_l" type="number" step="0.1" min="0.1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Tank Mass Override [kg]</span>
-                  <input id="blowdown_tank_initial_mass_kg" type="number" step="0.01" min="0.01">
-                </label>
-                <div class="field read-only-callout">
-                  <span class="field-label">Tank State Basis</span>
-                  <p class="field-note">In both modes, tank temperature sets the saturated nitrous pressure and liquid density. Advanced mode only changes whether tank mass and volume are manually overridden.</p>
-                </div>
-              </div>
-              <div class="override-row">
-                <label class="checkbox-field">
-                  <input id="blowdown_tank_override_mass_volume" type="checkbox">
-                  <span>Override tank mass and volume</span>
-                </label>
-                <button id="blowdown_tank_reset_override" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
-              </div>
-              <div class="field-grid two-up">
-                <label class="field">
-                  <span class="field-label">Injector Total Area Override [mm^2]</span>
-                  <input id="blowdown_injector_total_area_mm2" type="number" step="0.01" min="0.01">
-                </label>
-                <div class="override-row override-row-compact">
-                  <label class="checkbox-field">
-                    <input id="blowdown_injector_override_total_area" type="checkbox">
-                    <span>Override injector total area</span>
-                  </label>
-                  <button id="blowdown_injector_reset_override" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
-                </div>
-              </div>
-              <div class="field-grid three-up">
-                <label class="field">
-                  <span class="field-label">Initial Port Radius Override [mm]</span>
-                  <input id="blowdown_grain_initial_port_radius_mm" type="number" step="0.1" min="0.1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Grain Length Override [m]</span>
-                  <input id="blowdown_grain_length_m" type="number" step="0.001" min="0.001">
-                </label>
-                <label class="field">
-                  <span class="field-label">Outer Radius Override [mm]</span>
-                  <input id="blowdown_grain_outer_radius_mm" type="number" step="0.1" min="0.1">
-                </label>
-              </div>
-              <div class="override-stack">
-                <div class="override-row">
-                  <label class="checkbox-field">
-                    <input id="blowdown_grain_override_initial_port_radius" type="checkbox">
-                    <span>Override initial port radius</span>
-                  </label>
-                  <button id="blowdown_grain_reset_initial_port_radius" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
-                </div>
-                <div class="override-row">
-                  <label class="checkbox-field">
-                    <input id="blowdown_grain_override_grain_length" type="checkbox">
-                    <span>Override grain length</span>
-                  </label>
-                  <button id="blowdown_grain_reset_grain_length" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
-                </div>
-                <div class="override-row">
-                  <label class="checkbox-field">
-                    <input id="blowdown_grain_override_outer_radius" type="checkbox">
-                    <span>Override outer radius</span>
-                  </label>
-                  <button id="blowdown_grain_reset_outer_radius" type="button" class="run-button run-button-secondary run-button-inline">Reset Override</button>
-                </div>
-              </div>
-            </section>
-
-            <section id="blowdownFeedSection" class="form-section advanced-section">
-              <div class="section-header">
-                <h3>Feed</h3>
-                <p>Equivalent lumped feed losses between tank and injector.</p>
-              </div>
-              <div class="field-grid two-up">
-                <label class="field">
-                  <span class="field-label">Line ID [mm]</span>
-                  <input id="blowdown_feed_line_id_mm" type="number" step="0.1" min="0.1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Line Length [m]</span>
-                  <input id="blowdown_feed_line_length_m" type="number" step="0.01" min="0">
-                </label>
-                <label class="field">
-                  <span class="field-label">Friction Factor [-]</span>
-                  <input id="blowdown_feed_friction_factor" type="number" step="0.001" min="0">
-                </label>
-                <label class="field">
-                  <span class="field-label">Minor Loss K [-]</span>
-                  <input id="blowdown_feed_minor_loss_k_total" type="number" step="0.1" min="0">
-                </label>
-              </div>
-            </section>
-
-            <section id="blowdownSolverSection" class="form-section advanced-section">
-              <div class="section-header">
-                <h3>Simulation</h3>
-                <p>Advanced time-marching and convergence settings for the transient solution.</p>
-              </div>
-              <div class="field-grid two-up">
-                <label class="field">
-                  <span class="field-label">dt [s]</span>
-                  <input id="blowdown_sim_dt_s" type="number" step="0.001" min="0.0001">
-                </label>
-                <label class="field">
-                  <span class="field-label">Ambient Pressure [bar]</span>
-                  <input id="blowdown_sim_ambient_pressure_bar" type="number" step="0.001" min="0">
-                </label>
-                <label class="field">
-                  <span class="field-label">Max Inner Iterations</span>
-                  <input id="blowdown_sim_max_inner_iterations" type="number" step="1" min="1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Relaxation [-]</span>
-                  <input id="blowdown_sim_relaxation" type="number" step="0.01" min="0.01" max="1">
-                </label>
-                <label class="field">
-                  <span class="field-label">Relative Tolerance [-]</span>
-                  <input id="blowdown_sim_relative_tolerance" type="number" step="any" min="0.000000001">
-                </label>
-                <label class="field">
-                  <span class="field-label">Tank Quality Cutoff [-]</span>
-                  <input id="blowdown_sim_stop_quality" type="number" step="0.01" min="0.01" max="1">
-                </label>
-              </div>
-            </section>
-          </details>
-
-          <section class="form-section">
-            <div class="section-header">
-              <h3>Preliminary 0D Blowdown Model</h3>
-              <p>High-level blowdown inputs live directly in the main form. Advanced/manual blowdown setup is under the shared advanced dropdown at the bottom.</p>
-            </div>
-            <div class="field-grid two-up">
-              <label class="field">
-                <span class="field-label">Mode</span>
-                <select id="blowdown_ui_mode">
-                  <option value="basic">Basic / high-level</option>
-                  <option value="advanced">Advanced / manual overrides</option>
-                </select>
-              </label>
-              <label class="checkbox-field">
-                <input id="blowdown_auto_run_after_cea" type="checkbox">
-                <span>Run preliminary 0D blowdown automatically after CEA</span>
-              </label>
-            </div>
-            <div class="field-grid two-up">
-              <label class="field">
-                <span class="field-label">Burn Time [s]</span>
-                <input id="blowdown_sim_burn_time_s" type="number" step="0.1" min="0.1">
-              </label>
-              <div class="field read-only-callout">
-                <span class="field-label">CEA Seed</span>
-                <p class="field-note">Uses the latest completed highest-Isp CEA case for Isp, O/F, c*, and ABS fraction. Tank state follows the main oxidizer temperature input.</p>
-              </div>
-            </div>
-            <div class="field-grid three-up">
-              <label class="field">
-                <span class="field-label">Initial Fill Fraction [-]</span>
-                <input id="blowdown_tank_initial_fill_fraction" type="number" step="0.01" min="0.01" max="0.99">
-              </label>
-              <label class="field">
-                <span class="field-label">Target Initial Gox [kg/m^2/s]</span>
-                <input id="blowdown_grain_target_initial_gox_kg_m2_s" type="number" step="1" min="1">
-              </label>
-              <label class="field">
-                <span class="field-label">Injector Pressure-Drop Policy</span>
-                <select id="blowdown_injector_pressure_drop_policy">
-                  <option value="low">Low</option>
-                  <option value="nominal">Nominal</option>
-                  <option value="conservative">Conservative</option>
-                </select>
-              </label>
-            </div>
-            <div class="field-grid two-up">
-              <label class="field">
-                <span class="field-label">Fuel Family / Regression Preset</span>
-                <select id="blowdown_grain_regression_preset">
-                  <option value="project_default_paraffin_abs">Paraffin + ABS baseline (Project Default)</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </label>
-              <div class="field read-only-callout">
-                <span class="field-label">Hidden Basic Defaults</span>
-                <p class="field-note">Usable oxidizer fraction, injector Cd, injector hole count, port count, and fuel usable fraction use project defaults in basic mode unless you switch to advanced mode.</p>
-              </div>
-            </div>
-          </section>
-
-          <section class="form-section">
-            <div class="section-header">
-              <h3>Live Derived Results</h3>
-              <p>Read-only first-pass estimates derived from burn time + O/F + Isp + oxidizer temperature + fill policy, using the latest highest-Isp CEA case for the remaining seed values.</p>
-            </div>
-            <div id="blowdownLivePreview" class="best-isp-output">
-              <div class="empty-state">Run a CEA sweep to unlock live blowdown sizing estimates.</div>
-            </div>
-          </section>
-
-          <div class="form-button-stack">
-            <button id="runButton" type="submit" class="run-button">Run CEA Sweep</button>
-            <button id="runBlowdownButton" type="button" class="run-button run-button-secondary">Run 0D Blowdown Only</button>
-          </div>
-
-          <div id="sweepStatus" class="sweep-status hidden" aria-live="polite">
-            <div class="sweep-status-head">
-              <div id="sweepSpinner" class="sweep-spinner hidden"></div>
-              <div class="sweep-status-copy">
-                <div id="sweepStatusTitle" class="sweep-status-title">Ready to run</div>
-                <div id="sweepStatusText" class="sweep-status-text">No sweep is active.</div>
-              </div>
-              <div id="sweepStatusPercent" class="sweep-status-percent">0%</div>
-            </div>
-            <div id="sweepStacktraceControls" class="sweep-status-tools hidden">
-              <button id="sweepStacktraceToggle" type="button" class="status-tool-button">
-                Show Stacktrace
-              </button>
-              <button id="sweepStacktraceRefresh" type="button" class="status-tool-button hidden">
-                Refresh
-              </button>
-            </div>
-            <pre id="sweepStacktraceText" class="stacktrace-block hidden"></pre>
-            <div class="progress-track">
-              <div id="sweepProgressBar" class="progress-bar"></div>
-            </div>
-          </div>
-        </form>
-      </aside>
-
-      <main class="main-content">
-        <section class="panel summary-panel reveal">
-          <div class="summary-copy">
-            <p class="eyebrow">Overview</p>
-            <h2 id="heroTitle">Sweep overview</h2>
-            <p id="heroSubtext" class="hero-copy">
-              Load the defaults or change the ranges on the left, then run a sweep to populate the plots and CSV downloads.
-            </p>
-          </div>
-          <div class="summary-stats">
-            <div class="stat-chip">
-              <span class="stat-label">Cases</span>
-              <span id="caseCount" class="stat-value">-</span>
-            </div>
-            <div class="stat-chip">
-              <span class="stat-label">Failures</span>
-              <span id="failureCount" class="stat-value">-</span>
-            </div>
-            <div class="stat-chip">
-              <span class="stat-label">Runtime</span>
-              <span id="runtimeValue" class="stat-value">-</span>
-            </div>
-          </div>
-        </section>
-        <section class="panel reveal">
+      <main class="workspace">
+        <section class="panel panel-modes">
           <div class="panel-header">
-            <h2>Highest Isp Output</h2>
-            <p>Complete output parameters for the converged case with the highest Isp.</p>
+            <h2>Workflow Modes</h2>
+            <p>Pick the analysis you want to run. The dashboard highlights the config editors that matter for that mode.</p>
           </div>
-          <div id="bestIspOutput" class="best-isp-output">
-            <div class="empty-state">Run a sweep to populate the Isp-optimized output box.</div>
+          <div class="mode-grid">
+            <div v-if="!modes.length" class="empty-state">Loading workflow modes...</div>
+            <button
+              v-for="mode in modes"
+              :key="mode.key"
+              type="button"
+              class="mode-card"
+              :class="{ active: mode.key === selectedMode }"
+              @click="selectedMode = mode.key"
+            >
+              <h3>{{ mode.title }}</h3>
+              <p>{{ mode.description }}</p>
+            </button>
+          </div>
+          <div class="mode-guide-card">
+            <div v-if="!selectedModeDefinition" class="empty-state">Select a workflow mode to see run guidance.</div>
+            <div v-else class="guide-grid">
+              <div v-for="item in modeGuideItems" :key="item.label" class="guide-item">
+                <div class="guide-label">{{ item.label }}</div>
+                <div class="guide-value">{{ item.value }}</div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section class="panel reveal">
+        <section class="panel panel-config">
           <div class="panel-header">
-            <h2>Preliminary 0D Blowdown Model</h2>
-            <p>Transient tank, feed, injector, and regression model seeded from the highest-Isp CEA case, with explicit injector reporting.</p>
+            <h2>Run Inputs</h2>
+            <p>Edit the configs inline or keep the defaults from the project input files.</p>
           </div>
-          <div id="blowdownOutput" class="best-isp-output">
-            <div class="empty-state">Run a CEA sweep to seed the preliminary 0D blowdown model.</div>
+          <div class="field-row">
+            <label for="outputDir">Output Root</label>
+            <input id="outputDir" v-model="outputDir" type="text" spellcheck="false">
           </div>
-          <div class="chart-stack">
-            <article class="chart-section">
-              <div class="chart-header">
-                <h3>Pressures vs Time</h3>
-                <p>Tank pressure, injector inlet pressure, and chamber pressure over the transient run.</p>
+          <div
+            v-for="editor in editorDefinitions"
+            :key="editor.key"
+            v-show="isEditorVisible(editor.key)"
+            class="editor-block"
+          >
+            <div class="editor-header">
+              <h3>{{ editor.title }}</h3>
+              <span class="editor-tag">{{ editor.tag }}</span>
+            </div>
+            <textarea :id="editor.textareaId" v-model="editors[editor.modelKey]" spellcheck="false"></textarea>
+          </div>
+          <div class="button-row">
+            <button id="runButton" class="button button-primary" type="button" :disabled="busy" @click="runWorkflow">Run Selected Workflow</button>
+            <button id="runAllButton" class="button button-primary button-secondary-accent" type="button" :disabled="busy" @click="runAllWorkflows">Run Full Sequence</button>
+            <button id="resetButton" class="button" type="button" @click="resetDefaults">Reset Defaults</button>
+            <button id="refreshLatestButton" class="button" type="button" @click="refreshLatest">Refresh Latest Run</button>
+          </div>
+        </section>
+
+        <section class="panel panel-status">
+          <div class="panel-header">
+            <h2>Status</h2>
+            <p>Background run state and the summary generated by the shared workflow engine.</p>
+          </div>
+          <div class="status-card">
+            <div class="status-badge" :class="statusBadgeClass">{{ statusSnapshot.status || "idle" }}</div>
+            <p class="status-message">{{ statusSnapshot.message || "Ready." }}</p>
+          </div>
+          <div class="summary-card">
+            <div v-if="activeSummary" class="run-meta">
+              <div><strong>{{ activeSummary.labelMode }}:</strong> <code>{{ activeSummary.mode }}</code></div>
+              <div><strong>{{ activeSummary.labelRunId }}:</strong> <code>{{ activeSummary.runId }}</code></div>
+              <div><strong>Run Root:</strong> <code>{{ activeSummary.runRoot }}</code></div>
+            </div>
+            <ul v-if="activeSummary && activeSummary.lines.length" class="summary-list">
+              <li v-for="line in activeSummary.lines" :key="line">{{ line }}</li>
+            </ul>
+            <div v-else class="empty-state">Run a workflow to populate the summary.</div>
+          </div>
+          <div class="panel-subheader">
+            <h3>Run Logs</h3>
+            <p>Background execution messages from the current or most recent run.</p>
+          </div>
+          <div ref="logsCard" class="logs-card">
+            <div v-if="!statusLogs.length" class="empty-state" style="padding: 18px;">Start a run to see logs here.</div>
+            <div v-else class="log-list">
+              <div v-for="entry in statusLogs" :key="`${entry.timestamp}-${entry.level}-${entry.message}`" class="log-entry">
+                <div class="log-time">{{ logTime(entry.timestamp) }}</div>
+                <div class="log-level" :class="`log-level-${String(entry.level || 'info').toLowerCase()}`">{{ String(entry.level || "info").toLowerCase() }}</div>
+                <div class="log-message">{{ entry.message || "" }}</div>
               </div>
-              <div id="blowdownPressureChart" class="chart-host clickable-chart">
-                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-artifacts">
+          <div class="panel-header">
+            <h2>Latest Run</h2>
+            <p>Manifest-backed view of the most recent run root and generated sections.</p>
+          </div>
+          <div class="latest-run-card">
+            <div v-if="!latestRunManifest" class="empty-state">No run metadata found yet.</div>
+            <template v-else>
+              <div class="run-meta">
+                <div><strong>Run ID:</strong> <code>{{ latestRun.run_id }}</code></div>
+                <div><strong>Requested Mode:</strong> <code>{{ latestRun.requested_mode }}</code></div>
+                <div><strong>Run Root:</strong> <code>{{ latestRun.root }}</code></div>
               </div>
-            </article>
-            <article class="chart-section">
-              <div class="chart-header">
-                <h3>Mass Flow vs Time</h3>
-                <p>Oxidizer, fuel, and total propellant flow histories.</p>
-              </div>
-              <div id="blowdownMassFlowChart" class="chart-host clickable-chart">
-                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
-              </div>
-            </article>
-            <article class="chart-section">
-              <div class="chart-header">
-                <h3>Thrust vs Time</h3>
-                <p>Transient thrust predicted by the constant-c* and constant-Cf 0D blowdown model.</p>
-              </div>
-              <div id="blowdownThrustChart" class="chart-host clickable-chart">
-                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
-              </div>
-            </article>
-            <article class="chart-section">
-              <div class="chart-header">
-                <h3>State vs Time</h3>
-                <p>Dimensionless state variables including O/F and tank quality.</p>
-              </div>
-              <div id="blowdownStateChart" class="chart-host clickable-chart">
-                <div class="empty-state">Run the 0D blowdown model to populate this chart.</div>
-              </div>
+              <ul class="artifact-list">
+                <li v-for="section in manifestSections" :key="section.name">
+                  <strong>{{ section.name }}</strong>: <code>{{ section.path }}</code>
+                </li>
+              </ul>
+            </template>
+          </div>
+        </section>
+
+        <section class="panel panel-visualization">
+          <div class="panel-header">
+            <h2>Persisted Visualizations</h2>
+            <p>Reload-safe values, graphs, and geometry pulled from the latest files written under <code>output/</code>.</p>
+          </div>
+          <div class="metric-grid">
+            <div v-if="!persistedMetrics.length" class="empty-state">Run a workflow once to populate persisted metrics.</div>
+            <article
+              v-for="metric in persistedMetrics"
+              :key="metric.label"
+              class="metric-card"
+              :class="`metric-${metric.emphasis || 'neutral'}`"
+            >
+              <div class="metric-label">{{ metric.label }}</div>
+              <div class="metric-value">{{ formatMetricValue(metric) }}</div>
             </article>
           </div>
-        </section>
-
-        <section class="panel reveal">
-          <div class="panel-header">
-            <div>
-              <h2>Plots</h2>
-              <p>Interactive charts built directly in the browser from the raw CEA sweep results.</p>
-            </div>
-            <label class="field chart-metric-field">
-              <span class="field-label">Graph Metric</span>
-              <select id="selected_metric" disabled></select>
-            </label>
+          <div class="panel-subheader">
+            <h3>Artifact-Backed Graphs</h3>
+            <p>These plots are loaded directly from the latest run artifacts instead of being recreated from transient UI state.</p>
           </div>
-          <div class="chart-stack">
-            <article class="chart-section">
-              <div class="chart-header">
-                <h3 id="overviewMetricTitle">Raw metric vs O/F</h3>
-                <p>Each trace is one area ratio. Run one sweep first, then switch between preloaded graph metrics without recalculating CEA.</p>
+          <div class="chart-grid">
+            <div v-if="!persistedChartGroups.length" class="empty-state">No persisted graphs found for the latest run.</div>
+            <a
+              v-for="group in persistedChartGroups"
+              :key="group.key"
+              class="chart-group-card chart-group-link"
+              :href="group.detail_href || `/simulation.html?section=${group.key}`"
+            >
+              <div class="chart-group-summary">
+                <div>
+                  <h4>{{ group.title }}</h4>
+                  <p>{{ `${group.chart_count} persisted graph${group.chart_count === 1 ? "" : "s"} available` }}</p>
+                </div>
+                <span class="chart-group-toggle">Open Detail</span>
               </div>
-              <div id="overviewMetricChart" class="chart-host chart-host-wide clickable-chart" data-chart-title="Raw metric vs O/F">
-                <div class="empty-state">Run a sweep to populate the chart.</div>
+              <div class="chart-group-list">
+                <div v-for="chart in group.charts.slice(0, 4)" :key="chart.relative_path" class="chart-group-list-item">{{ chart.title }}</div>
               </div>
-            </article>
+            </a>
           </div>
         </section>
 
-        <section class="panel reveal">
+        <section class="panel panel-downloads">
           <div class="panel-header">
-            <h2>CSV Downloads</h2>
-            <p>Download exact CEA and derived sizing values instead of rendering a large integrated table in the UI.</p>
+            <h2>Downloads</h2>
+            <p>All artifact download links for the latest run are grouped here at the bottom of the page.</p>
           </div>
-          <div id="csvDownloads" class="csv-downloads">
-            <div class="empty-state">Run a sweep to generate downloadable CSV files.</div>
+          <div class="latest-run-card">
+            <div v-if="!latestRunManifest" class="empty-state">No latest-run artifacts available yet.</div>
+            <template v-else>
+              <div class="button-row latest-run-actions">
+                <a class="button" href="/api/latest-run-download?kind=combined_csv">Download All Outputs CSV</a>
+                <a class="button" href="/api/latest-run-download?kind=artifact_index_csv">Download Artifact Index CSV</a>
+                <a class="button" href="/api/latest-run-download?kind=manifest_json">Download Manifest JSON</a>
+              </div>
+              <div class="artifact-groups">
+                <section v-for="section in artifactSections" :key="section.name" class="artifact-group">
+                  <h4>{{ section.name }}</h4>
+                  <ul class="artifact-list">
+                    <li v-for="row in section.rows" :key="row.relative_path">
+                      <a :href="latestRunAssetUrl(row.relative_path)">{{ row.relative_path }}</a>
+                    </li>
+                  </ul>
+                </section>
+              </div>
+            </template>
           </div>
-        </section>
-
-        <section class="panel reveal">
-          <div class="panel-header">
-            <h2>Estimations</h2>
-            <p>Basis notes, assumptions, and the specific values currently used by the preliminary 0D blowdown calculation.</p>
-          </div>
-          <div id="estimationsOutput" class="best-isp-output">
-            <div class="empty-state">Run a CEA sweep to populate the blowdown estimations and active calculation values.</div>
-          </div>
-        </section>
-
-        <section class="panel reveal">
-          <div class="panel-header">
-            <h2>Method and References</h2>
-            <p>Engineering note covering the calculation chain, assumptions, and references used by the tool.</p>
-          </div>
-          <article id="calculationArticle" class="calc-article"></article>
         </section>
       </main>
     </div>
-  </div>
 
-  <div id="toast" class="toast hidden"></div>
-  <div id="chartModal" class="chart-modal hidden" aria-hidden="true">
-    <div class="chart-modal-backdrop" data-close-modal="true"></div>
-    <div class="chart-modal-dialog">
-      <div class="chart-modal-header">
-        <h3 id="chartModalTitle">Expanded chart</h3>
-        <button id="chartModalClose" type="button" class="chart-modal-close">Close</button>
-      </div>
-      <div id="chartModalBody" class="chart-modal-body"></div>
-    </div>
-  </div>
-
-  <script src="/app.js"></script>
-</body>
+    <script src="vendor/vue.global.prod.js"></script>
+    <script src="shared.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

@@ -1,14 +1,22 @@
-﻿"""Shared workflow constants for the modular design study layer."""
+"""Shared workflow constants for the modular design workflow layer."""
 
 from pathlib import Path
 
 OUTPUT_ROOT = Path("output")
-NOMINAL_DIRNAME = "nominal"
-SENSITIVITY_DIRNAME = "sensitivity"
-CORNERS_DIRNAME = "corners"
-CEA_DIRNAME = "cea"
+RUNS_DIRNAME = "runs"
+THERMOCHEMISTRY_DIRNAME = "thermochemistry"
+PERFORMANCE_DIRNAME = "performance"
+ANALYSIS_DIRNAME = "analysis"
 GEOMETRY_DIRNAME = "geometry"
-BALLISTICS_1D_DIRNAME = "ballistics_1d"
+INTERNAL_BALLISTICS_DIRNAME = "internal_ballistics"
+INJECTOR_DESIGN_DIRNAME = "injector_design"
+HYDRAULIC_VALIDATION_DIRNAME = "hydraulic_validation"
+STRUCTURAL_DIRNAME = "structural"
+THERMAL_DIRNAME = "thermal"
+NOZZLE_OFFDESIGN_DIRNAME = "nozzle_offdesign"
+CFD_DIRNAME = "cfd"
+TESTING_DIRNAME = "testing"
+REPORTS_DIRNAME = "reports"
 
 DEFAULT_SENSITIVITY_METRICS = [
     "pc_avg_bar",

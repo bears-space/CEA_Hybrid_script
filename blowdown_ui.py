@@ -1,6 +1,6 @@
-"""Thin launcher for the integrated preliminary 0D blowdown UI workflow."""
+"""Compatibility launcher for the integrated browser UI."""
 
-from cea_hybrid.server import main
+from src.ui.server import main
 
 
 if __name__ == "__main__":

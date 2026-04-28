@@ -1,0 +1,54 @@
+{
+  "test_campaign_source": "nominal_workflow",
+  "model_vs_test_source": "0d",
+  "hotfire_corrections_source": "staged_combined",
+  "readiness_source": "configured_progression_gates",
+  "dataset_path": "",
+  "dataset_format": "auto",
+  "enabled_stages": [
+    "material_coupon",
+    "hydraulic_validation",
+    "subscale_hotfire",
+    "fullscale_short_duration",
+    "fullscale_nominal_duration"
+  ],
+  "stage_order": [
+    "material_coupon",
+    "hydraulic_validation",
+    "subscale_hotfire",
+    "fullscale_short_duration",
+    "fullscale_nominal_duration"
+  ],
+  "geometry_reference_label": "frozen_geometry",
+  "include_internal_ballistics_case": true,
+  "include_corner_case_envelope": true,
+  "include_cfd_context": true,
+  "require_coldflow_before_hotfire": true,
+  "require_internal_ballistics_before_subscale": true,
+  "require_nozzle_offdesign_before_fullscale": true,
+  "require_cfd_before_fullscale": false,
+  "article_scaling": {
+    "subscale_linear_scale": 0.5,
+    "nominal_burn_time_s": 5.0
+  },
+  "instrumentation_defaults": {
+    "coldflow_sampling_rate_hz": 100.0,
+    "hotfire_sampling_rate_hz": 1000.0
+  },
+  "ingest": {
+    "channel_map": {},
+    "dataset_metadata_defaults": {}
+  },
+  "data_cleaning": {
+    "padding_pre_s": 0.05,
+    "padding_post_s": 0.05
+  },
+  "progression_thresholds": {
+    "allowed_pressure_trace_error_percent": 15.0,
+    "allowed_thrust_trace_error_percent": 15.0,
+    "allowed_burn_time_error_percent": 15.0,
+    "repeatability_cv_limit_percent": 5.0,
+    "thermal_warning_threshold_k": 50.0,
+    "minimum_repeat_runs": 2
+  }
+}

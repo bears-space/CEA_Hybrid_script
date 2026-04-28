@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <div class="page-shell">
+    <div id="app" class="page-shell" v-cloak>
       <main class="detail-shell">
         <section class="panel detail-hero">
           <div class="detail-hero-top">
@@ -25,8 +25,13 @@
             <h2>Graphical Flow</h2>
             <p>Read left to right: config inputs, core calculations, frozen geometry and physics, hardware sizing, then verification and campaign logic.</p>
           </div>
-          <div id="workflowMapCard" class="workflow-map-card">
-            <div class="empty-state">Loading workflow graph...</div>
+          <div class="workflow-map-card">
+            <div v-if="error" class="status-card">
+              <div class="status-badge status-error">error</div>
+              <p class="status-message">{{ error }}</p>
+            </div>
+            <div v-else-if="!payload" class="empty-state">Loading workflow graph...</div>
+            <div v-else v-html="workflowMapMarkup"></div>
           </div>
         </section>
 
@@ -35,13 +40,87 @@
             <h2>Step Details</h2>
             <p>Each card lists what the step consumes, what it writes, and where those outputs are typically fed next.</p>
           </div>
-          <div id="workflowStepGrid" class="workflow-step-grid">
-            <div class="empty-state">Loading step details...</div>
+          <div class="workflow-step-grid">
+            <div v-if="error" class="empty-state">Workflow metadata is not available.</div>
+            <div v-else-if="!phaseGroups.length" class="empty-state">Loading step details...</div>
+            <section v-for="phase in phaseGroups" :key="phase.key" class="workflow-phase-section">
+              <div class="workflow-phase-header">
+                <p class="eyebrow">Phase</p>
+                <h3>{{ phase.title }}</h3>
+              </div>
+              <div class="workflow-phase-grid">
+                <article
+                  v-for="node in phase.nodes"
+                  :key="node.id"
+                  class="workflow-step-card"
+                  :class="`workflow-step-${node.kind || 'workflow'}`"
+                >
+                  <div class="workflow-step-top">
+                    <div>
+                      <div class="workflow-step-kind">{{ node.kind || "workflow" }}</div>
+                      <h4>{{ node.title }}</h4>
+                    </div>
+                    <a class="button workflow-step-link" :href="node.detail_href || `/simulation.html?step=${node.id}`">Open Step Page</a>
+                  </div>
+                  <p class="workflow-step-description">{{ node.description || "" }}</p>
+                  <div class="workflow-step-columns">
+                    <div class="workflow-step-column">
+                      <div class="workflow-column-label">Inputs</div>
+                      <ul v-if="node.inputs && node.inputs.length" class="workflow-io-list">
+                        <li v-for="item in node.inputs" :key="ioItemKey(item)" class="workflow-io-item">
+                          <template v-if="typeof item === 'string'">
+                            {{ item }}
+                          </template>
+                          <template v-else>
+                            <div class="workflow-io-name-row">
+                              <code>{{ item.name || "unknown" }}</code>
+                              <span v-if="item.optional" class="workflow-io-flag">Optional</span>
+                            </div>
+                            <div class="workflow-io-description">{{ item.description || "" }}</div>
+                          </template>
+                        </li>
+                      </ul>
+                      <div v-else class="workflow-list-empty">None</div>
+                    </div>
+                    <div class="workflow-step-column">
+                      <div class="workflow-column-label">Outputs</div>
+                      <ul v-if="node.outputs && node.outputs.length" class="workflow-io-list">
+                        <li v-for="item in node.outputs" :key="ioItemKey(item)" class="workflow-io-item">
+                          <template v-if="typeof item === 'string'">
+                            {{ item }}
+                          </template>
+                          <template v-else>
+                            <div class="workflow-io-name-row">
+                              <code>{{ item.name || "unknown" }}</code>
+                              <span v-if="item.optional" class="workflow-io-flag">Optional</span>
+                            </div>
+                            <div class="workflow-io-description">{{ item.description || "" }}</div>
+                          </template>
+                        </li>
+                      </ul>
+                      <div v-else class="workflow-list-empty">None</div>
+                    </div>
+                  </div>
+                  <div class="workflow-step-column">
+                    <div class="workflow-column-label">Feeds Into</div>
+                    <ul v-if="downstreamById[node.id] && downstreamById[node.id].length" class="workflow-feed-list">
+                      <li v-for="item in downstreamById[node.id]" :key="`${node.id}-${item.id}`">
+                        <strong>{{ item.title }}</strong>
+                        <span>{{ item.label }}</span>
+                      </li>
+                    </ul>
+                    <div v-else class="workflow-list-empty">No downstream consumers listed.</div>
+                  </div>
+                </article>
+              </div>
+            </section>
           </div>
         </section>
       </main>
     </div>
 
+    <script src="vendor/vue.global.prod.js"></script>
+    <script src="shared.js"></script>
     <script src="howto.js"></script>
   </body>
 </html>

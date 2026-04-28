@@ -1,4 +1,4 @@
-"""Export helpers for Step 3 quasi-1D internal ballistics outputs."""
+"""Export helpers for quasi-1D internal ballistics outputs."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ def _summary_lines(
     comparison: Mapping[str, Any] | None,
 ) -> list[str]:
     lines = [
-        "Ballistics 1D Summary",
+        "Internal Ballistics Summary",
         f"Status: {metrics.get('status')}",
         f"Stop reason: {metrics.get('stop_reason')}",
         f"Geometry valid: {metrics.get('geometry_valid')}",
@@ -139,14 +139,14 @@ def write_ballistics_outputs(
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
     final_state = result.get("final_state")
-    write_rows_csv(destination / "ballistics_1d_history.csv", _history_rows(result.get("history", {})))
-    write_rows_csv(destination / "ballistics_1d_axial_history.csv", _axial_rows(result.get("axial_history", {})))
-    write_rows_csv(destination / "ballistics_1d_final_axial_profile.csv", _final_axial_profile_rows(result.get("axial_history", {})))
-    write_mapping_csv(destination / "ballistics_1d_metrics.csv", metrics)
-    write_json(destination / "ballistics_1d_metrics.json", dict(metrics))
-    write_rows_csv(destination / "ballistics_1d_constraints.csv", constraint_rows(constraints))
-    write_json(destination / "ballistics_1d_constraints.json", dict(constraints))
-    write_json(destination / "ballistics_1d_result.json", {
+    write_rows_csv(destination / "internal_ballistics_history.csv", _history_rows(result.get("history", {})))
+    write_rows_csv(destination / "internal_ballistics_axial_history.csv", _axial_rows(result.get("axial_history", {})))
+    write_rows_csv(destination / "internal_ballistics_final_axial_profile.csv", _final_axial_profile_rows(result.get("axial_history", {})))
+    write_mapping_csv(destination / "internal_ballistics_metrics.csv", metrics)
+    write_json(destination / "internal_ballistics_metrics.json", dict(metrics))
+    write_rows_csv(destination / "internal_ballistics_constraints.csv", constraint_rows(constraints))
+    write_json(destination / "internal_ballistics_constraints.json", dict(constraints))
+    write_json(destination / "internal_ballistics_result.json", {
         "status": result.get("status"),
         "stop_reason": result.get("stop_reason"),
         "warnings": list(result.get("warnings", [])),
@@ -160,9 +160,9 @@ def write_ballistics_outputs(
         },
     })
     if comparison is not None:
-        write_rows_csv(destination / "ballistics_1d_vs_0d.csv", comparison.get("rows", []))
-        write_json(destination / "ballistics_1d_vs_0d.json", comparison)
-    (destination / "ballistics_1d_summary.txt").write_text(
+        write_rows_csv(destination / "internal_ballistics_vs_0d.csv", comparison.get("rows", []))
+        write_json(destination / "internal_ballistics_vs_0d.json", comparison)
+    (destination / "internal_ballistics_summary.txt").write_text(
         "\n".join(
             _summary_lines(
                 geometry=geometry,

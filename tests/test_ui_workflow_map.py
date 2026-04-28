@@ -26,8 +26,13 @@ class WorkflowMapTests(unittest.TestCase):
 
         self.assertTrue(nodes["geometry"]["outputs"])
         self.assertTrue(nodes["structural_size"]["inputs"])
-        self.assertIn("geometry/geometry_definition.json", nodes["geometry"]["outputs"])
-        self.assertIn("testing/readiness_summary.json", nodes["test_readiness"]["outputs"])
+        self.assertEqual(nodes["geometry"]["outputs"][0]["name"], "chamber_id_m")
+        self.assertIn("Frozen chamber inner diameter", nodes["geometry"]["outputs"][0]["description"])
+        self.assertEqual(nodes["cea"]["outputs"][0]["name"], "isp_vac_s")
+        self.assertEqual(nodes["oat"]["outputs"][0]["name"], "parameter_name")
+        self.assertEqual(nodes["test_readiness"]["outputs"][0]["name"], "overall_readiness_flag")
+        self.assertNotIn(".json", nodes["geometry"]["outputs"][0]["name"])
+        self.assertNotIn(".csv", nodes["cea"]["outputs"][0]["name"])
 
 
 if __name__ == "__main__":

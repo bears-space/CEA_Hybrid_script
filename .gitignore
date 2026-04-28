@@ -1,6 +1,8 @@
 .idea
 outputs/
 output/
-output_test/
-output_step3_smoke*/
+output_*/
 __pycache__/
+*.py[cod]
+.drawing_preview.html
+.pytest_cache/

@@ -9,8 +9,8 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from blowdown_hybrid.constants import G0_MPS2
-from cea_hybrid.defaults import get_default_raw_config
+from src.blowdown_hybrid.constants import G0_MPS2
+from src.cea_hybrid.defaults import get_default_raw_config
 
 from src.cea.cea_runner import run_cea_case
 from src.io_utils import deep_merge
@@ -31,7 +31,18 @@ class PerformanceLookupTable:
     ae_at: float
 
     def _interp(self, values: tuple[float, ...], of_ratio: float) -> float:
-        return float(np.interp(float(of_ratio), self.of_values, values))
+        target = float(of_ratio)
+        x = np.asarray(self.of_values, dtype=float)
+        y = np.asarray(values, dtype=float)
+        if x.size == 1:
+            return float(y[0])
+        if target <= x[0]:
+            slope = (y[1] - y[0]) / (x[1] - x[0])
+            return float(y[0] + slope * (target - x[0]))
+        if target >= x[-1]:
+            slope = (y[-1] - y[-2]) / (x[-1] - x[-2])
+            return float(y[-1] + slope * (target - x[-1]))
+        return float(np.interp(target, x, y))
 
     def evaluate(
         self,
@@ -179,3 +190,4 @@ def build_performance_lookup(
     raw = deep_merge(get_default_raw_config(), raw_cea_config or {})
     key = _lookup_cache_key(seed_case, {"of_padding": config["of_padding"], "sample_count": sample_count}, raw)
     return _build_lookup_cached(key)
+

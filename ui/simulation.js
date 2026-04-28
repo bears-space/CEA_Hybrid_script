@@ -1,279 +1,576 @@
-function $(id) {
-  return document.getElementById(id);
+const { createApp } = Vue;
+const {
+  PALETTE,
+  barChartSvg,
+  cellText,
+  latestRunAssetUrl,
+  lineChartSvg,
+  prettyJson,
+  requestJson,
+} = window.WorkflowUiShared;
+
+const SECTION_STEP_FALLBACK = {
+  thermochemistry: "cea",
+  performance: "nominal",
+  analysis: "corners",
+  geometry: "geometry",
+  internal_ballistics: "internal_ballistics",
+  injector_design: "injector_design",
+  hydraulic_validation: "hydraulic_predict",
+  structural: "structural_size",
+  thermal: "thermal_size",
+  nozzle_offdesign: "nozzle_offdesign",
+  cfd: "cfd_plan",
+  testing: "test_readiness",
+};
+
+function stepParam() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("step") || SECTION_STEP_FALLBACK[params.get("section") || ""] || "";
 }
 
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
+function tableIndex(tables) {
+  return new Map((tables || []).map((table) => [table.key, table]));
+}
+
+function buildLineChartFromHint(hint, table) {
+  if (!table?.rows?.length) {
+    return null;
+  }
+  const grouped = new Map();
+  table.rows.forEach((row) => {
+    const xValue = row[hint.x_key];
+    const yValue = row[hint.y_key];
+    if (!Number.isFinite(Number(xValue)) || !Number.isFinite(Number(yValue))) {
+      return;
+    }
+    const seriesName = hint.series_key ? String(row[hint.series_key] ?? "Series") : "Series";
+    if (!grouped.has(seriesName)) {
+      grouped.set(seriesName, []);
+    }
+    grouped.get(seriesName).push({ x: Number(xValue), y: Number(yValue) });
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || `Request failed: ${response.status}`);
+  const series = Array.from(grouped.entries()).map(([name, points]) => ({
+    name,
+    points: points.sort((left, right) => left.x - right.x),
+  })).filter((item) => item.points.length);
+  if (!series.length) {
+    return null;
   }
-  return payload;
+  return {
+    kind: hint.kind,
+    source_path: table.relative_path,
+    series,
+    title: hint.title,
+    x_label: hint.x_label,
+    y_label: hint.y_label,
+  };
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function latestRunAssetUrl(relativePath) {
-  return `/api/latest-run-download?relative_path=${encodeURIComponent(relativePath)}`;
-}
-
-function sectionParam() {
-  return new URLSearchParams(window.location.search).get("section") || "";
-}
-
-function metricMarkup(metric) {
-  const unit = metric?.unit ? ` ${metric.unit}` : "";
-  return `
-    <article class="metric-card metric-${escapeHtml(metric.emphasis || "neutral")}">
-      <div class="metric-label">${escapeHtml(metric.label)}</div>
-      <div class="metric-value">${escapeHtml(`${metric.value ?? "n/a"}${unit}`)}</div>
-    </article>
-  `;
-}
-
-function renderHeader(payload) {
-  $("detailHeader").innerHTML = `
-    <p class="eyebrow">Latest Run Section</p>
-    <h1>${escapeHtml(payload.title)}</h1>
-    <p class="hero-text">Interactive detail page built from the latest persisted artifacts for <code>${escapeHtml(payload.section)}</code>.</p>
-    <div class="run-meta">
-      <div><strong>Run ID:</strong> <code>${escapeHtml(payload.run_id || "")}</code></div>
-      <div><strong>Requested Mode:</strong> <code>${escapeHtml(payload.requested_mode || "")}</code></div>
-      <div><strong>Run Root:</strong> <code>${escapeHtml(payload.root || "")}</code></div>
-    </div>
-  `;
-}
-
-function renderMetrics(metrics) {
-  $("detailMetricGrid").innerHTML = metrics?.length
-    ? metrics.map(metricMarkup).join("")
-    : '<div class="empty-state">No persisted metrics available.</div>';
-}
-
-function niceNumber(value) {
-  if (!Number.isFinite(value)) {
-    return "";
+function buildBarChartFromHint(hint, table) {
+  if (!table?.rows?.length) {
+    return null;
   }
-  const abs = Math.abs(value);
-  if (abs >= 1000 || (abs > 0 && abs < 0.01)) {
-    return value.toExponential(2);
-  }
-  if (abs >= 100) {
-    return value.toFixed(1);
-  }
-  if (abs >= 1) {
-    return value.toFixed(2);
-  }
-  return value.toFixed(3);
-}
-
-const PALETTE = ["#125f4b", "#8a5d00", "#944b2d", "#2a6cb0", "#6a3ea1", "#267a34"];
-
-function lineChartSvg(chart) {
-  const width = 760;
-  const height = 330;
-  const margin = { top: 24, right: 24, bottom: 52, left: 76 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-  const allPoints = (chart.series || []).flatMap((series) => series.points || []);
-  if (!allPoints.length) {
-    return "";
-  }
-  let minX = Math.min(...allPoints.map((point) => point.x));
-  let maxX = Math.max(...allPoints.map((point) => point.x));
-  let minY = Math.min(...allPoints.map((point) => point.y));
-  let maxY = Math.max(...allPoints.map((point) => point.y));
-  if (minX === maxX) {
-    minX -= 1;
-    maxX += 1;
-  }
-  if (minY === maxY) {
-    minY -= 1;
-    maxY += 1;
-  }
-  const yPad = (maxY - minY) * 0.08;
-  minY -= yPad;
-  maxY += yPad;
-  const x = (value) => margin.left + ((value - minX) / (maxX - minX)) * innerWidth;
-  const y = (value) => margin.top + innerHeight - ((value - minY) / (maxY - minY)) * innerHeight;
-
-  const grid = Array.from({ length: 5 }, (_, index) => {
-    const ratio = index / 4;
-    const yValue = minY + (maxY - minY) * ratio;
-    const yPos = y(yValue);
-    return `
-      <line x1="${margin.left}" y1="${yPos}" x2="${width - margin.right}" y2="${yPos}" class="interactive-grid"/>
-      <text x="${margin.left - 10}" y="${yPos + 4}" text-anchor="end" class="interactive-axis-label">${escapeHtml(niceNumber(yValue))}</text>
-    `;
-  }).join("");
-
-  const xTicks = Array.from({ length: 5 }, (_, index) => {
-    const ratio = index / 4;
-    const xValue = minX + (maxX - minX) * ratio;
-    const xPos = x(xValue);
-    return `
-      <line x1="${xPos}" y1="${margin.top}" x2="${xPos}" y2="${height - margin.bottom}" class="interactive-grid interactive-grid-vertical"/>
-      <text x="${xPos}" y="${height - margin.bottom + 18}" text-anchor="middle" class="interactive-axis-label">${escapeHtml(niceNumber(xValue))}</text>
-    `;
-  }).join("");
-
-  const seriesMarkup = (chart.series || []).map((series, index) => {
-    const color = PALETTE[index % PALETTE.length];
-    const points = series.points || [];
-    const path = points.map((point, pointIndex) => `${pointIndex === 0 ? "M" : "L"} ${x(point.x)} ${y(point.y)}`).join(" ");
-    const stride = chart.kind === "scatter" ? 1 : Math.max(1, Math.ceil(points.length / 50));
-    const markers = points.filter((_, pointIndex) => pointIndex % stride === 0 || pointIndex === points.length - 1).map((point) => `
-      <circle cx="${x(point.x)}" cy="${y(point.y)}" r="${chart.kind === "scatter" ? 4.5 : 3.2}" fill="${color}" class="interactive-point">
-        <title>${series.name}: ${chart.x_label} ${niceNumber(point.x)}, ${chart.y_label} ${niceNumber(point.y)}</title>
-      </circle>
-    `).join("");
-    return `
-      <path d="${path}" fill="none" stroke="${color}" stroke-width="${chart.kind === "scatter" ? 0 : 2.5}" />
-      ${markers}
-    `;
-  }).join("");
-
-  const legend = (chart.series || []).map((series, index) => `
-    <div class="interactive-legend-item">
-      <span class="interactive-legend-swatch" style="background:${PALETTE[index % PALETTE.length]}"></span>
-      <span>${escapeHtml(series.name)}</span>
-    </div>
-  `).join("");
-
-  return `
-    <svg viewBox="0 0 ${width} ${height}" class="interactive-chart-svg" role="img" aria-label="${escapeHtml(chart.title)}">
-      <rect x="0" y="0" width="${width}" height="${height}" rx="18" class="interactive-chart-bg"/>
-      ${grid}
-      ${xTicks}
-      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" class="interactive-axis"/>
-      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" class="interactive-axis"/>
-      ${seriesMarkup}
-      <text x="${width / 2}" y="${height - 10}" text-anchor="middle" class="interactive-axis-title">${escapeHtml(chart.x_label || "")}</text>
-      <text x="18" y="${height / 2}" text-anchor="middle" transform="rotate(-90 18 ${height / 2})" class="interactive-axis-title">${escapeHtml(chart.y_label || "")}</text>
-    </svg>
-    <div class="interactive-legend">${legend}</div>
-  `;
-}
-
-function barChartSvg(chart) {
-  const width = 760;
-  const height = 330;
-  const margin = { top: 24, right: 24, bottom: 92, left: 72 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-  const bars = chart.bars || [];
+  const bars = [];
+  table.rows.forEach((row) => {
+    const label = row[hint.category_key];
+    const value = row[hint.value_key];
+    if (label === null || label === undefined || label === "" || !Number.isFinite(Number(value))) {
+      return;
+    }
+    bars.push({ label: String(label), value: Number(value) });
+  });
   if (!bars.length) {
-    return "";
+    return null;
   }
-  const maxValue = Math.max(...bars.map((bar) => bar.value), 1);
-  const barWidth = innerWidth / bars.length;
-  const y = (value) => margin.top + innerHeight - (value / maxValue) * innerHeight;
-
-  const grid = Array.from({ length: 5 }, (_, index) => {
-    const value = (maxValue * index) / 4;
-    const yPos = y(value);
-    return `
-      <line x1="${margin.left}" y1="${yPos}" x2="${width - margin.right}" y2="${yPos}" class="interactive-grid"/>
-      <text x="${margin.left - 10}" y="${yPos + 4}" text-anchor="end" class="interactive-axis-label">${escapeHtml(niceNumber(value))}</text>
-    `;
-  }).join("");
-
-  const barsMarkup = bars.map((bar, index) => {
-    const xPos = margin.left + index * barWidth + barWidth * 0.14;
-    const rectWidth = barWidth * 0.72;
-    const yPos = y(bar.value);
-    const label = bar.label.length > 18 ? `${bar.label.slice(0, 18)}...` : bar.label;
-    return `
-      <rect x="${xPos}" y="${yPos}" width="${rectWidth}" height="${height - margin.bottom - yPos}" rx="8" fill="${PALETTE[index % PALETTE.length]}" class="interactive-bar">
-        <title>${bar.label}: ${niceNumber(bar.value)}</title>
-      </rect>
-      <text x="${xPos + rectWidth / 2}" y="${height - margin.bottom + 12}" text-anchor="end" transform="rotate(-34 ${xPos + rectWidth / 2} ${height - margin.bottom + 12})" class="interactive-axis-label">${escapeHtml(label)}</text>
-    `;
-  }).join("");
-
-  return `
-    <svg viewBox="0 0 ${width} ${height}" class="interactive-chart-svg" role="img" aria-label="${escapeHtml(chart.title)}">
-      <rect x="0" y="0" width="${width}" height="${height}" rx="18" class="interactive-chart-bg"/>
-      ${grid}
-      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" class="interactive-axis"/>
-      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" class="interactive-axis"/>
-      ${barsMarkup}
-      <text x="${width / 2}" y="${height - 10}" text-anchor="middle" class="interactive-axis-title">${escapeHtml(chart.x_label || "")}</text>
-      <text x="18" y="${height / 2}" text-anchor="middle" transform="rotate(-90 18 ${height / 2})" class="interactive-axis-title">${escapeHtml(chart.y_label || "")}</text>
-    </svg>
-  `;
+  return {
+    bars,
+    kind: "bar",
+    source_path: table.relative_path,
+    title: hint.title,
+    x_label: hint.x_label,
+    y_label: hint.y_label,
+  };
 }
 
-function renderCharts(charts) {
-  const host = $("detailChartGrid");
-  if (!charts?.length) {
-    host.innerHTML = '<div class="empty-state">No interactive charts available.</div>';
-    return;
+function buildCountBarChartFromHint(hint, table) {
+  if (!table?.rows?.length) {
+    return null;
   }
-  host.innerHTML = charts.map((chart) => `
+  const counts = new Map();
+  table.rows.forEach((row) => {
+    const label = row[hint.category_key];
+    if (label === null || label === undefined || label === "") {
+      return;
+    }
+    const key = String(label);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  if (!counts.size) {
+    return null;
+  }
+  return {
+    bars: Array.from(counts.entries()).map(([label, value]) => ({ label, value })),
+    kind: "bar",
+    source_path: table.relative_path,
+    title: hint.title,
+    x_label: hint.x_label,
+    y_label: hint.y_label,
+  };
+}
+
+function numericColumns(table) {
+  return (table.columns || []).filter((column) => (table.rows || []).some((row) => Number.isFinite(Number(row[column]))));
+}
+
+function categoryColumns(table) {
+  return (table.columns || []).filter((column) => (table.rows || []).some((row) => typeof row[column] === "string" && row[column]));
+}
+
+function fallbackCharts(tables) {
+  const charts = [];
+  (tables || []).forEach((table) => {
+    const numerics = numericColumns(table);
+    const categories = categoryColumns(table);
+    if (!numerics.length) {
+      return;
+    }
+    if (table.columns?.includes("time_s")) {
+      const seriesKey = ["region", "case_name", "target_name", "stage_name"].find((key) => table.columns.includes(key));
+      numerics.filter((column) => column !== "time_s").slice(0, 3).forEach((column) => {
+        charts.push({
+          kind: "line",
+          series_key: seriesKey,
+          table_key: table.key,
+          title: `${table.title}: ${column.replaceAll("_", " ")}`,
+          x_key: "time_s",
+          x_label: "Time [s]",
+          y_key: column,
+          y_label: column.replaceAll("_", " "),
+        });
+      });
+      return;
+    }
+    if (categories.length) {
+      const categoryKey = categories[0];
+      numerics.slice(0, 2).forEach((column) => {
+        charts.push({
+          category_key: categoryKey,
+          kind: "bar",
+          table_key: table.key,
+          title: `${table.title}: ${column.replaceAll("_", " ")}`,
+          value_key: column,
+          x_label: categoryKey.replaceAll("_", " "),
+          y_label: column.replaceAll("_", " "),
+        });
+      });
+      return;
+    }
+    if (numerics.length >= 2) {
+      numerics.slice(1, 3).forEach((column) => {
+        charts.push({
+          kind: "scatter",
+          table_key: table.key,
+          title: `${table.title}: ${column.replaceAll("_", " ")}`,
+          x_key: numerics[0],
+          x_label: numerics[0].replaceAll("_", " "),
+          y_key: column,
+          y_label: column.replaceAll("_", " "),
+        });
+      });
+    }
+  });
+  return charts.slice(0, 6);
+}
+
+function buildRenderedCharts(payload) {
+  const tables = tableIndex(payload?.tables || []);
+  const hints = payload?.chart_hints?.length ? payload.chart_hints : fallbackCharts(payload?.tables || []);
+  return hints.map((hint) => {
+    const table = tables.get(hint.table_key);
+    if (hint.kind === "bar") {
+      return buildBarChartFromHint(hint, table);
+    }
+    if (hint.kind === "count_bar") {
+      return buildCountBarChartFromHint(hint, table);
+    }
+    return buildLineChartFromHint(hint, table);
+  }).filter(Boolean);
+}
+
+function isInputArtifact(relativePath) {
+  return /(?:_used|_source)\.json$/i.test(relativePath || "");
+}
+
+function makeJsonCard(title, sourceLabel, content, cardKey, relativePath = "") {
+  return {
+    cardKey,
+    content: content || {},
+    kind: "json-preview",
+    relativePath,
+    sourceLabel,
+    title,
+  };
+}
+
+function makeTablePreviewCard(table) {
+  return {
+    cardKey: `table-preview:${table.relative_path}`,
+    columns: table.columns || [],
+    kind: "table-preview",
+    meta: [`${table.rows?.length || 0} rows | ${table.columns?.length || 0} columns`],
+    relativePath: table.relative_path,
+    rows: table.rows || [],
+    sourceLabel: table.relative_path,
+    title: table.title,
+  };
+}
+
+function makeTableSummaryCard(table) {
+  const columns = (table.columns || []).slice(0, 8).join(", ");
+  return {
+    cardKey: `table-summary:${table.relative_path}`,
+    kind: "summary",
+    meta: [
+      `${table.rows?.length || 0} rows | ${table.columns?.length || 0} columns`,
+      `Columns: ${columns || "n/a"}`,
+    ],
+    relativePath: table.relative_path,
+    sourceLabel: table.relative_path,
+    title: table.title,
+  };
+}
+
+function makeJsonSummaryCard(artifact) {
+  const keys = Object.keys(artifact.content || {}).slice(0, 10).join(", ");
+  return {
+    cardKey: `json-summary:${artifact.relative_path}`,
+    content: artifact.content || {},
+    kind: "json-summary",
+    meta: [`Top-level keys: ${keys || "n/a"}`],
+    relativePath: artifact.relative_path,
+    sourceLabel: artifact.relative_path,
+    title: artifact.title,
+  };
+}
+
+function makeSvgSummaryCard(artifact) {
+  return {
+    cardKey: `svg-summary:${artifact.relative_path}`,
+    kind: "summary",
+    meta: ["Persisted SVG export from the workflow run."],
+    relativePath: artifact.relative_path,
+    sourceLabel: artifact.relative_path,
+    title: artifact.title,
+  };
+}
+
+const IoValue = {
+  props: {
+    value: {
+      required: false,
+      type: null,
+    },
+  },
+  computed: {
+    isPrimitive() {
+      return ["string", "number", "boolean"].includes(typeof this.value);
+    },
+    jsonText() {
+      return prettyJson(this.value);
+    },
+    primitiveText() {
+      return String(this.value);
+    },
+  },
+  template: `
+    <div v-if="value === null || value === undefined" class="workflow-io-value-empty">Value not available.</div>
+    <div v-else-if="isPrimitive" class="workflow-io-value"><code>{{ primitiveText }}</code></div>
+    <details v-else class="workflow-io-value-details">
+      <summary>View Value</summary>
+      <pre class="json-preview">{{ jsonText }}</pre>
+    </details>
+  `,
+};
+
+const IoItem = {
+  components: {
+    IoValue,
+  },
+  props: {
+    item: {
+      required: true,
+      type: null,
+    },
+  },
+  computed: {
+    isStringItem() {
+      return typeof this.item === "string";
+    },
+  },
+  template: `
+    <li class="workflow-io-item">
+      <template v-if="isStringItem">
+        {{ item }}
+      </template>
+      <template v-else>
+        <div class="workflow-io-name-row">
+          <code>{{ item.name || "unknown" }}</code>
+          <span v-if="item.optional" class="workflow-io-flag">Optional</span>
+        </div>
+        <div class="workflow-io-description">{{ item.description || "" }}</div>
+        <io-value :value="item.value"></io-value>
+        <div class="workflow-io-source">Source: <code>{{ item.value_source || "n/a" }}</code></div>
+      </template>
+    </li>
+  `,
+};
+
+const ChartCard = {
+  props: {
+    chart: {
+      required: true,
+      type: Object,
+    },
+  },
+  data() {
+    return {
+      hiddenSeries: [],
+    };
+  },
+  computed: {
+    hasLegend() {
+      return (this.chart.series || []).length > 1;
+    },
+    svgMarkup() {
+      const currentChart = this.visibleChart;
+      return currentChart.kind === "bar" ? barChartSvg(currentChart) : lineChartSvg(currentChart);
+    },
+    visibleChart() {
+      if (!this.chart.series) {
+        return this.chart;
+      }
+      return {
+        ...this.chart,
+        series: this.chart.series.filter((series) => !this.hiddenSeries.includes(series.name)),
+      };
+    },
+  },
+  methods: {
+    isHidden(name) {
+      return this.hiddenSeries.includes(name);
+    },
+    swatch(index) {
+      return PALETTE[index % PALETTE.length];
+    },
+    toggleSeries(name) {
+      if (this.hiddenSeries.includes(name)) {
+        this.hiddenSeries = this.hiddenSeries.filter((item) => item !== name);
+        return;
+      }
+      this.hiddenSeries = [...this.hiddenSeries, name];
+    },
+  },
+  template: `
     <article class="interactive-chart-card">
       <div class="chart-header">
-        <h4>${escapeHtml(chart.title)}</h4>
+        <h4>{{ chart.title }}</h4>
+        <p class="chart-source-label">Source: <code>{{ chart.source_path || "derived from persisted CSV" }}</code></p>
       </div>
-      ${chart.kind === "bar" ? barChartSvg(chart) : lineChartSvg(chart)}
-    </article>
-  `).join("");
-}
-
-function renderSvgs(svgCharts) {
-  const host = $("detailSvgGrid");
-  if (!svgCharts?.length) {
-    host.innerHTML = '<div class="empty-state">No persisted SVG exports available.</div>';
-    return;
-  }
-  host.innerHTML = svgCharts.map((chart) => `
-    <article class="chart-card">
-      <div class="chart-header">
-        <h5>${escapeHtml(chart.title)}</h5>
+      <div class="interactive-chart-body" v-html="svgMarkup"></div>
+      <div class="interactive-legend">
+        <button
+          v-for="(series, index) in chart.series || []"
+          :key="series.name"
+          type="button"
+          class="chart-series-toggle"
+          :class="{ 'is-hidden': isHidden(series.name) }"
+          @click="toggleSeries(series.name)"
+        >
+          <span class="interactive-legend-swatch" :style="{ background: swatch(index) }"></span>
+          <span>{{ series.name }}</span>
+        </button>
+        <template v-if="!hasLegend"></template>
       </div>
-      <img class="chart-preview" src="${latestRunAssetUrl(chart.relative_path)}" alt="${escapeHtml(chart.title)}">
     </article>
-  `).join("");
-}
+  `,
+};
 
-function renderNotes(notes) {
-  $("detailNotesCard").innerHTML = notes?.length
-    ? `<ul class="artifact-list">${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>`
-    : '<div class="empty-state">No notes available.</div>';
-}
+const ArtifactCard = {
+  props: {
+    card: {
+      required: true,
+      type: Object,
+    },
+  },
+  methods: {
+    cellText,
+    latestRunAssetUrl,
+    prettyJson,
+  },
+  template: `
+    <article class="source-card">
+      <div class="source-card-top">
+        <h4>{{ card.title }}</h4>
+        <a v-if="card.relativePath" class="button" :href="latestRunAssetUrl(card.relativePath)">Download</a>
+      </div>
+      <div class="source-card-path"><code>{{ card.sourceLabel }}</code></div>
+      <p v-for="line in card.meta || []" :key="line" class="source-card-meta">{{ line }}</p>
 
-function renderDownloads(downloads) {
-  $("detailDownloadsCard").innerHTML = downloads?.length
-    ? `<ul class="artifact-list">${downloads.map((item) => `<li><a href="${latestRunAssetUrl(item.relative_path)}">${escapeHtml(item.relative_path)}</a></li>`).join("")}</ul>`
-    : '<div class="empty-state">No downloads available.</div>';
-}
+      <pre v-if="card.kind === 'json-preview' || card.kind === 'json-summary'" class="json-preview">{{ prettyJson(card.content) }}</pre>
 
-async function init() {
-  const section = sectionParam();
-  if (!section) {
-    throw new Error("Missing section query parameter.");
-  }
-  const payload = await requestJson(`/api/latest-run-section?section=${encodeURIComponent(section)}`);
-  renderHeader(payload);
-  renderMetrics(payload.metrics || []);
-  renderCharts(payload.charts || []);
-  renderSvgs(payload.svg_charts || []);
-  renderNotes(payload.notes || []);
-  renderDownloads(payload.downloads || []);
-}
+      <div v-else-if="card.kind === 'table-preview'">
+        <div v-if="card.columns && card.columns.length" class="table-preview-shell">
+          <table class="table-preview">
+            <thead>
+              <tr>
+                <th v-for="column in card.columns" :key="column">{{ column }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!card.rows.length">
+                <td :colspan="card.columns.length">No rows available.</td>
+              </tr>
+              <tr v-for="(row, rowIndex) in card.rows" :key="rowIndex">
+                <td v-for="column in card.columns" :key="column"><code>{{ cellText(row[column]) }}</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="empty-state">No columns were found in this CSV artifact.</div>
+      </div>
+    </article>
+  `,
+};
 
-window.addEventListener("DOMContentLoaded", () => {
-  init().catch((error) => {
-    $("detailHeader").innerHTML = `<div class="status-card"><div class="status-badge status-error">error</div><p class="status-message">${escapeHtml(error.message)}</p></div>`;
-  });
-});
+createApp({
+  components: {
+    ArtifactCard,
+    ChartCard,
+    IoItem,
+  },
+  data() {
+    return {
+      error: "",
+      payload: null,
+    };
+  },
+  computed: {
+    configSnapshot() {
+      return this.payload?.config_snapshot || null;
+    },
+    downloads() {
+      return this.payload?.downloads || [];
+    },
+    latestRunText() {
+      if (!this.payload) {
+        return "";
+      }
+      return this.payload.run_id
+        ? `Latest run detail built from ${this.payload.run_id}.`
+        : "No latest-run artifacts were found for this step yet.";
+    },
+    metrics() {
+      return this.payload?.metrics || [];
+    },
+    notes() {
+      return this.payload?.notes || [];
+    },
+    renderedCharts() {
+      return this.payload ? buildRenderedCharts(this.payload) : [];
+    },
+    sourceCards() {
+      if (!this.payload) {
+        return [];
+      }
+      const cards = [];
+      (this.payload.tables || []).forEach((table) => {
+        cards.push(makeTableSummaryCard(table));
+      });
+      (this.payload.json_artifacts || []).forEach((artifact) => {
+        cards.push(makeJsonSummaryCard(artifact));
+      });
+      (this.payload.svg_exports || []).forEach((artifact) => {
+        cards.push(makeSvgSummaryCard(artifact));
+      });
+      return cards;
+    },
+    valueGroups() {
+      if (!this.payload) {
+        return [];
+      }
+      const inputCards = [];
+      const outputCards = [];
+
+      if (this.payload.kind === "config" && this.payload.config_snapshot) {
+        inputCards.push(
+          makeJsonCard(
+            this.payload.config_snapshot.title || this.payload.title,
+            this.payload.config_snapshot.source || "Current default editor payload",
+            this.payload.config_snapshot.content || {},
+            `config:${this.payload.step}`,
+          ),
+        );
+      }
+
+      (this.payload.json_artifacts || []).forEach((artifact) => {
+        const card = makeJsonCard(
+          artifact.title,
+          artifact.relative_path,
+          artifact.content || {},
+          `json:${artifact.relative_path}`,
+          artifact.relative_path,
+        );
+        if (isInputArtifact(artifact.relative_path)) {
+          inputCards.push(card);
+        } else {
+          outputCards.push(card);
+        }
+      });
+
+      (this.payload.tables || []).forEach((table) => {
+        outputCards.push(makeTablePreviewCard(table));
+      });
+
+      return [
+        {
+          cards: inputCards,
+          description: this.payload.kind === "config"
+            ? "This config node exposes the full editable payload currently driving the workflow."
+            : "These persisted input payloads were consumed or carried into the selected step.",
+          emptyText: this.payload.kind === "config"
+            ? "No config payload is available for this node."
+            : "No persisted input payloads were attached to this step.",
+          title: this.payload.kind === "config" ? "Configured Values" : "Input Payloads",
+        },
+        {
+          cards: outputCards,
+          description: "These JSON and CSV artifacts were generated by the selected step and are rendered inline in full.",
+          emptyText: "No generated JSON or CSV values were attached to this step.",
+          title: "Generated Values",
+        },
+      ];
+    },
+  },
+  methods: {
+    ioItemKey(item) {
+      if (typeof item === "string") {
+        return item;
+      }
+      return `${item?.name || "unknown"}-${item?.value_source || ""}`;
+    },
+    latestRunAssetUrl,
+    prettyJson,
+  },
+  async mounted() {
+    try {
+      const step = stepParam();
+      if (!step) {
+        throw new Error("Missing step query parameter.");
+      }
+      this.payload = await requestJson(`/api/workflow-step?step=${encodeURIComponent(step)}`);
+    } catch (error) {
+      this.error = error.message;
+    }
+  },
+}).mount("#app");

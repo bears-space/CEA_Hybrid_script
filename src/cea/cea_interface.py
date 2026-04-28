@@ -1,11 +1,11 @@
-﻿"""High-level CEA module interface for both standalone and imported workflows."""
+"""High-level CEA module interface for both standalone and imported workflows."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping
 
-from cea_hybrid.defaults import get_default_raw_config
+from src.cea_hybrid.defaults import get_default_raw_config
 
 from src.io_utils import deep_merge
 from src.cea.cea_runner import run_cea_case, run_cea_sweep, write_cea_outputs
@@ -41,3 +41,4 @@ __all__ = [
     "run_cea_study",
     "write_cea_outputs",
 ]
+

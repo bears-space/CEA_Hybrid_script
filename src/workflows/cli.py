@@ -51,5 +51,10 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional path to a testing and readiness override JSON config.",
     )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="Application log level (for example: DEBUG, INFO, WARNING).",
+    )
     parser.add_argument("--output-dir", default=str(OUTPUT_ROOT), help="Root output directory for generated artifacts.")
     return parser.parse_args()

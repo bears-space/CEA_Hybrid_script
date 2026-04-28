@@ -1,466 +1,301 @@
-# Hybrid Rocket Workflow
+# BEARS Hybrid Engine Workflow
 
-This project now has two layers plus a higher-fidelity internal-ballistics extension:
+Python project for first-pass hybrid rocket engine design and simulation with an N2O oxidizer, paraffin fuel, ABS structural fraction, reduced-order feed and injector models, injector geometry synthesis, hydraulic validation against cold-flow data, first-pass structural and thermal sizing, reduced-order nozzle off-design and environment assessment, and CFD campaign planning plus correction-package reuse.
 
-- `cea_hybrid/` and `blowdown_hybrid/`: the existing working physics and UI/backend codepaths
-- `src/`: the new modular workflow layer for standalone CEA runs, nominal 0D runs, Step 1 sensitivity/corner studies, Step 2 geometry freeze, and Step 3 quasi-1D internal ballistics
+## Architecture
 
-The refactor keeps the legacy CEA and blowdown logic in place for compatibility, but routes new analysis workflows through explicit interfaces instead of UI-coupled script calls.
+The project is organized by domain rather than by workflow stage.
 
-## Current Scope
+- `src/cea/`: thermochemistry and CEA integration.
+- `src/simulation/`: 0D engine runtime, quasi-1D internal ballistics, state models, and solver utilities.
+- `src/sizing/`: first-pass sizing and baseline geometry freeze logic.
+- `src/injector_design/`: axial showerhead injector synthesis, back-calculation, checks, and export.
+- `src/hydraulic_validation/`: dataset ingest, prediction, calibration, residual analysis, and calibration-package reuse.
+- `src/structural/`: first-pass structural load cases, chamber and closure sizing, injector plate checks, retention placeholders, mass estimates, and export.
+- `src/thermal/`: first-pass thermal load cases, region-wise heat-transfer estimates, wall-temperature checks, protection placeholders, and export.
+- `src/nozzle_offdesign/`: ambient-case generation, transient nozzle off-design evaluation, expansion-state checks, separation-risk heuristics, recommendations, and export.
+- `src/cfd/`: ordered CFD target generation, case packaging, result ingest, correction bridges, and export.
+- `src/testing/`: staged test campaign planning, article definitions, instrumentation plans, data ingest, model-vs-test comparison, hot-fire calibration packages, and readiness gates.
+- `src/analysis/`: sensitivity, corner cases, pressure-budget comparisons, and summary helpers.
+- `src/post/`: CSV, JSON, text, and plot export helpers.
+- `src/artifacts/`: consolidated run-root output management.
+- `src/config/`: canonical configuration package for normalized workflow settings.
+- `src/workflows/`: shared workflow runner for the CLI and browser UI.
+- `src/ui/`: workflow dashboard HTTP server.
 
-Implemented now:
+`main.py` is intentionally minimal and delegates to `src.cli` and `src.workflows.engine`.
+`src/config_schema.py` is retained only as a compatibility wrapper around `src/config/`.
 
-- separated CEA module callable from Python
-- reusable `run_0d_case()` workflow facade around the current 0D hybrid blowdown model
-- unified thrust / `Isp` / `Cf` / `c*` bookkeeping across CEA seed, first-pass sizing, and transient results
-- lightweight cached CEA lookup for transient `c*(O/F)` and nozzle performance variation
-- nominal metric extraction
-- constraint evaluation
-- one-at-a-time sensitivity analysis
-- named corner-case analysis
-- Step 2 first-pass geometry freeze
-- Step 3 quasi-1D internal ballistics using the frozen Step 2 geometry
-- 0D vs 1D comparison exports
-- CSV/JSON/SVG exports
-- argparse-based `main.py` entry point
+## Workflow Modes
 
-Not implemented yet:
+CLI modes:
 
-- CFD
-- detailed injector geometry beyond the equivalent-orifice model
-- structural FEA
-- thermal FEA
-
-## Project Structure
-
-Top-level:
-
-- `main.py`: workflow CLI
-- `defaults.json`: single source of truth for all project default values for CEA and the blowdown/design workflow
-- `constants.json`: single source of truth for project constants and option metadata
-- `input/design_config.json`: optional design-workflow override file
-- `input/cea_config.json`: optional CEA override file
-- `src/`: new modular workflow package
-- `cea_hybrid/`: legacy CEA sweep implementation kept intact
-- `blowdown_hybrid/`: legacy 0D blowdown implementation kept intact
-- `ui/`, `ui_server.py`, `blowdown_ui.py`: existing browser UI path
-
-New workflow package:
-
-- `src/cea/`
-  - `cea_runner.py`: callable wrappers around the legacy CEA solver path
-  - `cea_parser.py`: dict-to-dataclass parsing
-  - `cea_interface.py`: public CEA API
-  - `cea_types.py`: typed CEA result objects
-- `src/simulation/`
-  - `solver_0d.py`: reusable `run_0d_case(config)` facade
-  - `solver_1d.py`: reusable `run_1d_ballistics_case(config, geometry, ...)` facade
-  - `axial_mesh.py`: axial discretization helpers for the grain/port
-  - `ballistics_1d.py`: local axial marching and fuel-addition logic
-  - `performance_lookup.py`: lightweight cached CEA lookup for transient `c*` and nozzle performance
-  - `case_runner.py`: nominal case orchestration
-  - `state_1d.py`: typed quasi-1D settings and solver state
-  - `stop_conditions.py`: stop/status normalization
-- `src/analysis/`
-  - `ballistics_comparison.py`: 0D vs 1D summary deltas
-  - `metrics.py`: time-history reduction to design metrics
-  - `constraints.py`: constraint checking
-  - `geometry_checks.py`: hard geometry validity checks for first-pass grains
-  - `pressure_budget.py`: explicit tank -> feed -> injector -> chamber bookkeeping helpers
-  - `sensitivity.py`: OAT sensitivity
-  - `corner_cases.py`: named corner-case runs
-  - `summaries.py`: CSV row shaping
-- `src/sizing/`
-  - `first_pass_sizing.py`: first-pass sizing helpers re-exported from the legacy blowdown path
-  - `geometry_init.py`: geometric initialization helpers
-  - `geometry_types.py`: frozen geometry dataclass
-  - `geometry_rules.py`: deterministic geometry rules and sanity checks
-  - `geometry_freeze.py`: Step 2 geometry-freeze orchestration
-- `src/post/`
-  - `ballistics_export.py`: Step 3 time-history, axial-field, and comparison exports
-  - `csv_export.py`: CSV writers
-  - `geometry_export.py`: geometry JSON/CSV/text exports
-  - `plotting.py`: lightweight SVG plot generation without matplotlib
-  - `report_tables.py`: simple report-table helpers
-- `src/models/regression.py`: reusable local power-law regression submodel
-- `src/config_schema.py`: workflow defaults and config loading
-- `src/io_utils.py`, `src/units.py`, `src/constants.py`: shared utilities
-
-## Legacy Compatibility
-
-Kept intentionally:
-
-- `cea_hybrid/` remains the source of truth for the current CEA sweep behavior and CSV/SVG sweep exports
-- `blowdown_hybrid/` remains the source of truth for the current first-pass sizing and 0D blowdown physics
-- the browser UI path is untouched architecturally and still uses the legacy backend modules
-
-New data-source boundary:
-
-- hardcoded Python defaults were replaced with root-level `defaults.json`
-- hardcoded Python project constants were replaced with root-level `constants.json`
-- `input/*.json` are now optional override files instead of duplicate default snapshots
-
-One performance-focused internal change was made to the legacy blowdown layer:
-
-- `blowdown_hybrid/thermo.py` now caches saturated N2O property lookups by temperature
-
-That change preserves the existing equations and assumptions, but makes repeated nominal/OAT/corner runs practical.
-
-## Installation
-
-Requirements already used by the current project:
-
-- Python 3
 - `cea`
-- `numpy`
-- `CoolProp`
+- `nominal`
+- `oat`
+- `corners`
+- `geometry`
+- `internal_ballistics`
+- `injector_design`
+- `hydraulic_predict`
+- `hydraulic_calibrate`
+- `hydraulic_compare`
+- `structural_size`
+- `thermal_size`
+- `nozzle_offdesign`
+- `cfd_plan`
+- `cfd_export_cases`
+- `cfd_ingest_results`
+- `cfd_apply_corrections`
+- `test_plan`
+- `test_define_articles`
+- `test_ingest_data`
+- `test_compare_model`
+- `test_calibrate_hotfire`
+- `test_readiness`
 
-The included virtual environment already contains the required packages on this machine.
+Examples:
 
-## CLI Usage
-
-Run the new workflow CLI:
-
-```powershell
-python main.py --mode cea
+```bash
 python main.py --mode nominal
-python main.py --mode oat
-python main.py --mode corners
-python main.py --mode freeze_geometry
-python main.py --mode ballistics_1d
+python main.py --mode geometry --config input/design_config.json --cea-config input/cea_config.json
+python main.py --mode injector_design --config input/design_config.json --cea-config input/cea_config.json
+python main.py --mode hydraulic_calibrate --config input/design_config.json --hydraulic-config input/hydraulic_validation_config.json
+python main.py --mode structural_size --config input/design_config.json --structural-config input/structural_config.json
+python main.py --mode thermal_size --config input/design_config.json --structural-config input/structural_config.json --thermal-config input/thermal_config.json
+python main.py --mode nozzle_offdesign --config input/design_config.json --structural-config input/structural_config.json --thermal-config input/thermal_config.json --nozzle-offdesign-config input/nozzle_offdesign_config.json
+python main.py --mode cfd_plan --config input/design_config.json --structural-config input/structural_config.json --thermal-config input/thermal_config.json --nozzle-offdesign-config input/nozzle_offdesign_config.json --cfd-config input/cfd_config.json
+python main.py --mode cfd_apply_corrections --config input/design_config.json --structural-config input/structural_config.json --thermal-config input/thermal_config.json --nozzle-offdesign-config input/nozzle_offdesign_config.json --cfd-config input/cfd_config.json
+python main.py --mode test_plan --config input/design_config.json --structural-config input/structural_config.json --thermal-config input/thermal_config.json --nozzle-offdesign-config input/nozzle_offdesign_config.json --cfd-config input/cfd_config.json --testing-config input/test_campaign_config.json
+python main.py --mode test_calibrate_hotfire --config input/design_config.json --structural-config input/structural_config.json --thermal-config input/thermal_config.json --nozzle-offdesign-config input/nozzle_offdesign_config.json --testing-config input/test_campaign_config.json
+python main.py --mode test_readiness --config input/design_config.json --structural-config input/structural_config.json --thermal-config input/thermal_config.json --nozzle-offdesign-config input/nozzle_offdesign_config.json --testing-config input/test_campaign_config.json
 ```
 
-Supported arguments:
+Legacy mode aliases are still accepted for compatibility, but the canonical names above are the supported interface going forward.
 
-```powershell
-python main.py --mode cea --cea-config input/cea_config.json --output-dir output
-python main.py --mode nominal --config input/design_config.json --output-dir output
-python main.py --mode oat --config input/design_config.json --output-dir output
-python main.py --mode corners --config input/design_config.json --output-dir output
-python main.py --mode freeze_geometry --config input/design_config.json --cea-config input/cea_config.json --output-dir output
-python main.py --mode ballistics_1d --config input/design_config.json --cea-config input/cea_config.json --output-dir output
-```
+## Config Files
 
-Modes:
+Primary input files:
 
-- `--mode cea`
-  - runs the separated CEA sweep module
-  - if `--cea-config` is omitted, it uses the `cea` section from `defaults.json`
-  - writes outputs under `output/cea/`
-- `--mode nominal`
-  - runs one nominal 0D case
-  - if `--config` is omitted, it uses the `design_workflow` section from `defaults.json`
-  - writes outputs under `output/nominal/`
-- `--mode oat`
-  - runs one-at-a-time sensitivity cases around the nominal design
-  - writes outputs under `output/sensitivity/`
-- `--mode corners`
-  - runs configured named corner cases
-  - writes outputs under `output/corners/`
-- `--mode freeze_geometry`
-  - runs the nominal case plus Step 1 OAT and corner summaries
-  - requests a matching reference point from the separated CEA module
-  - freezes one baseline engine geometry for later workflow stages
-  - writes outputs under `output/geometry/`
-- `--mode ballistics_1d`
-  - consumes the frozen Step 2 baseline geometry
-  - runs the new quasi-1D internal ballistics solver
-  - can compare the 1D result against the reusable 0D nominal case
-  - writes outputs under `output/ballistics_1d/`
+- `input/design_config.json`
+- `input/cea_config.json`
+- `input/hydraulic_validation_config.json`
+- `input/structural_config.json`
+- `input/thermal_config.json`
+- `input/nozzle_offdesign_config.json`
+- `input/cfd_config.json`
+- `input/test_campaign_config.json`
 
-## CEA Module
-
-Public CEA entry points live in `src/cea/cea_interface.py`.
-
-Key interfaces:
-
-- `run_cea_case(cea_config) -> CEAPerformancePoint`
-- `run_cea_study(raw_config) -> CEASweepResult`
-- `get_cea_performance_point(result, selector="highest_isp")`
-- `load_cea_config(path)`
-
-Available downstream CEA fields include:
-
-- `cstar_mps`
-- `isp_s`
-- `isp_sl_s`
-- `isp_vac_s`
-- `cf`
-- `cf_sea_level`
-- `cf_vac`
-- `gamma_e`
-- `molecular_weight_exit`
-- `chamber_temperature_k`
-- `exit_pressure_bar`
-- `exit_temperature_k`
-- staged sea-level / vacuum thrust values
-- nozzle throat and exit areas
-
-The CEA module does not select chamber pressure. It evaluates thermochemistry at the specified conditions.
-
-## 0D Solver Interface
-
-Public 0D entry point:
-
-- `src/simulation/solver_0d.py`
-- `run_0d_case(config: dict) -> dict`
-
-The solver facade:
-
-- builds a seed performance point
-- maps the nominal study config into the current blowdown model inputs
-- runs the existing coupled tank/feed/injector/grain/nozzle closure
-- uses a lightweight cached CEA lookup so transient `c*` varies with `O/F`
-- uses one explicit pressure chain: `p_tank -> dp_feed -> p_injector_inlet -> dp_injector -> p_chamber`
-- standardizes time histories and stop/status handling
-
-Returned histories include:
-
-- `t_s`
-- `tank_pressure_bar`
-- `tank_temperature_k`
-- `tank_quality`
-- `oxidizer_mass_remaining_kg`
-- `mdot_ox_kg_s`
-- `mdot_f_kg_s`
-- `mdot_total_kg_s`
-- `of_ratio`
-- `pc_bar`
-- `thrust_transient_actual_n`
-- `thrust_vac_n`
-- `isp_transient_s`
-- `cstar_effective_mps`
-- `cf_actual`
-- `dp_feed_over_pc`
-- `dp_injector_over_pc`
-- `dp_total_over_ptank`
-- `port_radius_mm`
-- `grain_web_remaining_mm`
-
-## Step 3 1D / Quasi-1D Ballistics
-
-Public Step 3 entry point:
-
-- `src/simulation/solver_1d.py`
-- `run_1d_ballistics_case(config, geometry, cea_data=None, optional_seed_state=None) -> dict`
-
-The 1D model:
-
-- consumes the Step 2 `GeometryDefinition`
-- reuses the current blowdown/feed/injector runtime inputs instead of replacing them
-- discretizes the active grain length axially
-- applies the baseline regression law locally as `rdot = a * Gox^n`
-- adds fuel cell-by-cell and grows the port radius cell-by-cell
-- keeps chamber/nozzle closure reduced-order through the same `c*` / `Cf` bookkeeping used elsewhere
-- exports both time histories and axial distributions
-- records a terminal axial snapshot at the actual end-of-run geometry, so the final axial profile and final port-size metrics reflect the last applied port-growth update
-
-Current explicit quasi-1D approximation:
-
-- oxidizer mass flow is conserved along the port in the current Step 3 model
-- fuel is added locally from regression, so total mass flow increases downstream and local `O/F` decreases downstream
-- a configurable axial correction profile is available for the axial showerhead baseline so the port can evolve non-uniformly without detailed injector CFD
-
-This is intentional. It gives a useful and fast resolved internal-ballistics layer while keeping the interfaces open for later CFD-informed or test-calibrated submodels.
-
-## Step 1 Design Config
-
-`defaults.json` contains the full organized project defaults.
-
-`input/design_config.json` is now an optional override file layered on top of the `design_workflow` section from `defaults.json`.
-
-The design-workflow section is organized as:
+Canonical top-level design-config sections:
 
 - `nominal`
-  - `performance`
-  - `blowdown`
-  - `loss_factors`
 - `performance_lookup`
-- `ballistics_1d`
-- `uncertainty`
-- `constraints`
 - `geometry_policy`
-- `sensitivity_metrics`
+- `internal_ballistics`
+- `injector_design`
+- `hydraulic_validation`
+- `structural`
+- `thermal`
+- `nozzle_offdesign`
+- `cfd`
+- `testing`
+- `uncertainty`
 - `corner_cases`
+- `constraints`
 
-`performance_lookup` controls the lightweight transient CEA interpolation layer, including:
-
-- whether the lookup is enabled
-- O/F padding around the nominal point
-- number of sampled CEA points
-- whether the solver falls back to the seed-point performance if lookup generation fails
-
-`geometry_policy` contains the explicit Step 2 freeze heuristics, including:
-
-- single-port baseline flag
-- prechamber/postchamber enable flags
-- grain-to-chamber radial clearance
-- injector-face margin factor
-- prechamber/postchamber length fractions
-- placeholder injector plate and chamber wall thicknesses
-- soft L* warning band
-- minimum burnout web
-- maximum port-to-outer-radius ratio
-- maximum grain slenderness ratio
-- geometry checks tied back to Step 1 nominal and corner-case constraint status
-
-`ballistics_1d` contains the Step 3 quasi-1D settings, including:
-
-- axial cell count
-- quasi-1D time step and maximum simulation time
-- ambient pressure
-- geometry input source
-- optional geometry auto-freeze behavior
-- performance lookup mode
-- regression model mode
-- prechamber/postchamber handling mode
-- station count for axial plots
-- axial correction mode for the showerhead baseline
-- maximum allowed fractional web growth per time step for solver-stability guarding
-
-Currently supported uncertainty parameters:
-
-- `tank_temperature_k`
-- `fill_fraction`
-- `usable_ox_fraction`
-- `injector_cd`
-- `regression_a`
-- `regression_n`
-- `cstar_efficiency`
-- `cf_efficiency`
-- `usable_fuel_fraction`
-- `injector_dp_fraction`
-- `line_loss_multiplier`
-- `nozzle_discharge_factor`
-
-Supported uncertainty modes:
-
-- `percent`
-- `absolute`
+The config loader still accepts earlier compatibility aliases where needed, but normalized runtime configs use the canonical section names above.
 
 ## Outputs
 
-Nominal mode writes:
+All workflow artifacts are consolidated under a run root:
 
-- `nominal_history.csv`
-- `nominal_metrics.csv`
-- `nominal_metrics.json`
-- `nominal_constraints.csv`
-- `nominal_constraints.json`
-- `pc_vs_time.svg`
-- `thrust_vs_time.svg`
-- `mass_flow_vs_time.svg`
-- `of_vs_time.svg`
-- `port_radius_vs_time.svg`
-- `tank_pressure_vs_time.svg`
-
-Those nominal outputs now distinguish:
-
-- seed values
-- derived first-pass estimates
-- simulated initial values
-- simulated final values
-- constraint results
-
-The pressure budget is explicit in both the transient histories and the UI/report output:
-
-- tank pressure
-- feed pressure drop
-- injector inlet pressure
-- injector pressure drop
-- chamber pressure
-- feed / injector / total pressure-drop ratios
-
-OAT mode writes:
-
-- `oat_cases.csv`
-- `ranking_<metric>.csv`
-- `ranking_<metric>.svg`
-- `nominal_metrics.json`
-
-Corner mode writes:
-
-- `corner_case_summary.csv`
-- `corner_case_summary.json`
-- `pc_overlay.svg`
-- `thrust_overlay.svg`
-- `of_overlay.svg`
-
-Geometry mode writes:
-
-- `baseline_geometry.json`
-- `baseline_geometry.csv`
-- `geometry_summary.txt`
-- `geometry_context.json`
-- `cea_reference_case.json` when the reference CEA point converges
-
-Ballistics 1D mode writes:
-
-- `ballistics_1d_history.csv`
-- `ballistics_1d_axial_history.csv`
-- `ballistics_1d_final_axial_profile.csv`
-- `ballistics_1d_metrics.csv`
-- `ballistics_1d_metrics.json`
-- `ballistics_1d_constraints.csv`
-- `ballistics_1d_constraints.json`
-- `ballistics_1d_result.json`
-- `ballistics_1d_summary.txt`
-- `pc_vs_time.svg`
-- `thrust_vs_time.svg`
-- `of_vs_time.svg`
-- `mass_flow_vs_time.svg`
-- `port_radius_stations_vs_time.svg`
-- `gox_stations_vs_time.svg`
-- `final_port_radius_vs_x.svg`
-- `final_regression_rate_vs_x.svg`
-- `ballistics_1d_vs_0d.csv` and `ballistics_1d_vs_0d.json` when 0D comparison is enabled
-- `compare_pc_0d_vs_1d.svg`
-- `compare_thrust_0d_vs_1d.svg`
-- `compare_of_0d_vs_1d.svg`
-
-The axial CSV exports include:
-
-- local port radius and area
-- wetted perimeter
-- conserved oxidizer mass flow and local oxidizer flux
-- local regression rate
-- local fuel addition rate
-- downstream cumulative fuel flow and total mass flow
-- local `O/F`
-
-CEA mode writes:
-
-- legacy sweep CSVs and SVGs under `output/cea/`
-- `cea_config_used.json`
-- `highest_isp_case.json`
-
-## Automated Checks
-
-Current test coverage includes:
-
-- legacy first-pass sizing tests in `tests/test_blowdown_first_pass.py`
-- new Step 1 workflow smoke tests in `tests/test_step1_workflow.py`
-- Step 2 geometry-freeze smoke tests in `tests/test_geometry_freeze.py`
-- Step 3 quasi-1D smoke tests in `tests/test_ballistics_1d.py`
-
-Run:
-
-```powershell
-python -m unittest tests.test_blowdown_first_pass tests.test_step1_workflow tests.test_geometry_freeze tests.test_ballistics_1d
+```text
+output/
+  latest_run.json
+  runs/
+    <run_id>/
+      manifest.json
+      thermochemistry/
+      performance/
+      analysis/
+      geometry/
+      internal_ballistics/
+      injector_design/
+      hydraulic_validation/
+      structural/
+      thermal/
+      nozzle_offdesign/
+      cfd/
+      testing/
 ```
 
-## Notes And TODOs
+Each run writes a `manifest.json` with the mode, summary metadata, and generated section paths.
 
-Current placeholders or intentionally simplified areas:
+Representative artifact names:
 
-- the Step 1 nominal config uses an explicit seed performance point instead of automatically pulling from a CEA case
-- the separated CEA module already supports extracting a highest-Isp point, but there is not yet a fully declarative config path that wires a selected CEA result into the Step 1 nominal JSON automatically
-- plots are written as lightweight SVGs because `matplotlib` is not installed in the current environment
-- the current 0D solver still uses the existing rigid, adiabatic, saturated two-phase nitrous assumptions
-- transient performance now varies through a lightweight cached CEA lookup, but it is still not a full finite-rate combustion or detailed nozzle-flow model
-- the Step 2 geometry freeze is intentionally analytical: injector face, wall thickness, prechamber, and postchamber dimensions are configurable placeholders, not final CAD or FEA-backed dimensions
-- the current Step 3 solver is quasi-1D, not CFD: it does not resolve detailed injector-hole flow distribution, finite-rate chemistry, or chamber recirculation
-- later refinement should plug CFD-informed injector distribution, improved oxidizer-consumption bookkeeping, regression calibration, and test-derived correction factors into the existing Step 3 interfaces instead of replacing the workflow
+- `geometry/geometry_definition.json`
+- `internal_ballistics/internal_ballistics_metrics.json`
+- `injector_design/injector_geometry.json`
+- `hydraulic_validation/hydraulic_predictions.csv`
+- `hydraulic_validation/calibration_package.json`
+- `structural/structural_sizing.json`
+- `structural/structural_load_cases.json`
+- `thermal/thermal_sizing.json`
+- `thermal/thermal_load_cases.json`
+- `nozzle_offdesign/nozzle_offdesign_results.json`
+- `nozzle_offdesign/nozzle_environment_cases.json`
+- `cfd/cfd_campaign_plan.json`
+- `cfd/cfd_case_definitions.json`
+- `testing/test_campaign_plan.json`
+- `testing/model_vs_test_comparisons.csv`
+- `testing/hotfire_calibration_packages.json`
+- `testing/readiness_summary.json`
 
-Those are deliberate continuity choices, not silent physics changes.
+## UI
+
+Start the browser dashboard with either:
+
+```bash
+python ui_server.py
+python blowdown_ui.py
+```
+
+The UI now uses the same shared workflow runner as the CLI. It exposes:
+
+- thermochemistry
+- nominal performance
+- sensitivity
+- corner cases
+- geometry
+- internal ballistics
+- injector design
+- hydraulic prediction and calibration
+- structural sizing
+- thermal sizing
+- nozzle off-design and environment assessment
+- CFD campaign planning and correction application
+- test campaign planning, data ingest, hot-fire calibration, and readiness gating
+
+The dashboard runs workflows in the background, shows run summaries, loads its workflow-mode catalog from the backend, and reads the latest run manifest plus artifact index from the consolidated output tree.
+
+Frontend implementation notes:
+
+- `ui/index.html`, `ui/howto.html`, and `ui/simulation.html` are now Vue 3 pages.
+- `ui/vendor/vue.global.prod.js` vendors the Vue runtime locally so the dashboard does not depend on an external CDN at runtime.
+- `ui/shared.js` holds browser-side helpers shared across the Vue apps.
+
+UI usage notes:
+
+- The editors are preloaded with effective defaults from the project defaults plus any `input/*.json` overrides that exist.
+- You do not need to provide separate config files to run from the UI unless you want to replace or override those defaults.
+- `Run Selected Workflow` executes the currently selected mode, not the entire catalog.
+- Later-stage modes may still generate prerequisite artifacts inside the same run root when the selected workflow depends on them.
+
+## Hydraulic Validation
+
+`src/hydraulic_validation/` adds a calibration layer on top of the existing reduced-order feed and injector models. It supports:
+
+- CSV and JSON dataset ingest
+- injector-only, feed-only, and joint calibration
+- surrogate-fluid labeling
+- reusable calibration packages
+- residual metrics and validation flags
+- back-integration into the existing 0D and quasi-1D solvers
+
+This layer is intentionally reduced-order. It does not add CFD, hot-fire calibration, or flashing two-phase injector flow modeling.
+
+## Structural Sizing
+
+`src/structural/` adds a first-pass structural sizing layer on top of the frozen geometry and reduced-order engine loads. It supports:
+
+- explicit structural load cases from nominal 0D, corner-case envelopes, peak quasi-1D results, or user overrides
+- chamber-shell pressure-vessel sizing with a thick-wall fallback warning path
+- forward and aft closure sizing with simple circular-plate models
+- injector-plate structural checks tied to the synthesized showerhead geometry when available
+- fastener and nozzle-retention placeholders
+- grain-support warnings based on web thickness, clearance, and slenderness
+- structural mass breakdowns, validity flags, and exported summary artifacts
+
+This layer is intentionally first-pass and auditable. It does not add FEA, thermal-structural coupling, weld design, fatigue, or certification logic.
+
+## Thermal Sizing
+
+`src/thermal/` adds a first-pass thermal sizing layer on top of the frozen geometry, reduced-order solver histories, injector geometry, and structural thickness selections. It supports:
+
+- explicit transient thermal load cases from nominal 0D, corner-case envelopes, transient quasi-1D results, or user overrides
+- Bartz-like region-wise gas-side heat-transfer placeholders for chamber, throat, nozzle, and injector-face checks
+- two-node reduced-order wall-temperature histories with explicit lumped-model warnings
+- chamber, prechamber, postchamber, throat, diverging-nozzle, and injector-face thermal validity checks
+- optional liner and throat-insert placeholder sizing with first-pass protection mass estimates
+- exported thermal summaries, transient histories, plots, and validity flags for reuse by later refinement work
+
+This layer is intentionally first-pass and auditable. It does not add CFD, detailed conjugate heat transfer, ablation recession, regenerative cooling, film cooling, or hot-fire-calibrated heat-flux models.
+
+## Nozzle Off-Design
+
+`src/nozzle_offdesign/` adds a first-pass nozzle off-design and environment-check layer on top of the frozen geometry, solver histories, and structural/thermal outputs. It supports:
+
+- explicit sea-level, altitude-point, vacuum, sweep, and ascent-profile placeholder environment cases
+- transient evaluation across the actual burn using nominal 0D, transient quasi-1D, corner-envelope, or user-override source histories
+- reduced-order thrust, `Cf`, `Isp`, and exit-pressure comparisons across ambient conditions
+- explicit expansion-state classification and pressure-ratio separation-risk heuristics
+- practical recommendations for ground-test versus flight use, including a separate ground-test nozzle recommendation path
+- exported off-design summaries, transient histories, plots, and validity flags for reuse by later refinement work
+
+This layer is intentionally first-pass and auditable. It does not add CFD, detailed separated-flow simulation, side-load prediction, trajectory optimization, or hot-fire-calibrated nozzle loss models.
+
+## CFD Planning
+
+`src/cfd/` adds a first-pass CFD target-definition and correction-bridge layer on top of the frozen geometry, injector geometry, solver histories, structural sizing, thermal sizing, and nozzle off-design results. It supports:
+
+- explicit ordered CFD campaign generation with the default recommendation: injector first, then head-end, then nozzle, then broader reacting internal flow
+- reduced-order operating-point selection from nominal 0D, quasi-1D, corner-case, thermal, and nozzle off-design outputs instead of arbitrary guessed points
+- structured geometry-scope and boundary-condition packages for external CFD setup
+- JSON and CSV ingest of summarized external CFD result files without depending on raw field data
+- reusable correction packages for injector CdA, head-end distribution, thermal multipliers, and nozzle penalties
+- optional correction application into reduced-order config overrides so the existing fast workflow can consume CFD-informed updates without a rewrite
+
+This layer is intentionally supportive rather than primary. It does not add a CFD solver, mesh generation automation, raw field post-processing dependence, or a CFD-first replacement workflow.
+
+## Testing
+
+`src/testing/` adds a structured test-progression and model-feedback layer on top of the frozen geometry, injector geometry, hydraulic validation, structural sizing, thermal sizing, nozzle off-design results, and optional CFD context. It supports:
+
+- explicit ordered campaign stages from coupon checks through cold flow, subscale hot-fire, full-scale short duration, and full-scale nominal duration
+- traceable article definitions, instrumentation recommendations, and a lightweight test matrix
+- JSON and CSV ingest of cleaned cold-flow or hot-fire datasets without turning the project into a DAQ or control system
+- reduced-order model-vs-test comparison against the existing 0D and quasi-1D solver histories
+- reusable hot-fire calibration packages for regression, efficiency, nozzle-loss, and thermal-multiplier updates
+- explicit readiness gates and blocker reporting for stage-to-stage progression
+
+This layer is intentionally supportive rather than primary. It does not add test-stand control, operations documentation, qualification logic, or empirical-only replacement of the reduced-order workflow.
+
+Current regression suite:
+
+```bash
+python -m unittest \
+  tests.test_blowdown_first_pass \
+  tests.test_design_workflow \
+  tests.test_geometry_baseline \
+  tests.test_internal_ballistics \
+  tests.test_injector_design \
+  tests.test_hydraulic_validation \
+  tests.test_structural_sizing \
+  tests.test_thermal_sizing \
+  tests.test_nozzle_offdesign \
+  tests.test_cfd_workflow \
+  tests.test_testing_workflow
+```
+
+## Notes
+
+- The separate CEA path is preserved.
+- The fast 0D and quasi-1D solvers are preserved.
+- Injector geometry and hydraulic calibration are additive layers on top of the existing reduced-order engine workflow.
+- Structural sizing is another additive reduced-order layer on top of the existing geometry, hydraulic, and performance workflow.
+- Thermal sizing is another additive reduced-order layer on top of the existing geometry, injector, hydraulic, structural, and performance workflow.
+- Nozzle off-design is another additive reduced-order layer on top of the existing geometry, performance, structural, and thermal workflow.
+- CFD planning is another additive integration layer on top of the existing geometry, injector, hydraulic, structural, thermal, and nozzle workflow outputs.
+- Structured test progression is another additive feedback and calibration layer on top of the existing geometry, injector, hydraulic, structural, thermal, nozzle, and CFD workflow outputs.
+- Compatibility aliases remain in a few config and workflow entrypoints to reduce breakage during the refactor.
+- Future work should continue to plug hot-fire updates, CFD-informed corrections, richer hydraulic characterization, automated CAD/mesh export, detailed nozzle-flow refinements, later FEA or thermal refinements, and richer test-stand metadata integration into the current reduced-order interfaces rather than replacing them.

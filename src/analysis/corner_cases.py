@@ -8,13 +8,25 @@ from typing import Any, Mapping
 from src.analysis.constraints import evaluate_constraints
 from src.analysis.metrics import extract_case_metrics
 from src.analysis.sensitivity import _set_parameter, _varied_value
-from src.config_schema import build_design_config
+from src.config import build_design_config
 from src.simulation.solver_0d import run_0d_case
+from src.sizing.geometry_types import GeometryDefinition
 
 
-def run_corner_cases(config: Mapping[str, Any]) -> dict[str, Any]:
+def run_corner_cases(
+    config: Mapping[str, Any],
+    *,
+    frozen_geometry: GeometryDefinition | None = None,
+    injector_geometry: Mapping[str, Any] | None = None,
+    raw_cea_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     study_config = build_design_config(config)
-    nominal_result = run_0d_case(study_config)
+    nominal_result = run_0d_case(
+        study_config,
+        frozen_geometry=frozen_geometry,
+        injector_geometry=injector_geometry,
+        raw_cea_config=raw_cea_config,
+    )
     nominal_metrics = extract_case_metrics(nominal_result, study_config)
     nominal_constraints = evaluate_constraints(nominal_metrics, study_config["constraints"])
 
@@ -56,7 +68,12 @@ def run_corner_cases(config: Mapping[str, Any]) -> dict[str, Any]:
                 value = float(setting)
             _set_parameter(case_config, parameter, value)
 
-        result = run_0d_case(case_config)
+        result = run_0d_case(
+            case_config,
+            frozen_geometry=frozen_geometry,
+            injector_geometry=injector_geometry,
+            raw_cea_config=raw_cea_config,
+        )
         metrics = extract_case_metrics(result, case_config)
         constraints = evaluate_constraints(metrics, case_config["constraints"])
         corner_results.append(

@@ -1,4 +1,4 @@
-﻿"""Reusable 0D solver facade built on top of the legacy blowdown model."""
+"""Reusable 0D solver facade built on top of the legacy blowdown model."""
 
 from __future__ import annotations
 
@@ -8,14 +8,15 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from cea_hybrid.defaults import get_default_raw_config
-from blowdown_hybrid.calculations import build_runtime_inputs
-from blowdown_hybrid.solver import simulate
-from blowdown_hybrid.ui_backend import build_config_from_payload
+from src.cea_hybrid.defaults import get_default_raw_config
+from src.blowdown_hybrid.calculations import build_runtime_inputs
+from src.blowdown_hybrid.solver import simulate
+from src.blowdown_hybrid.ui_backend import build_config_from_payload
 
 from src.models.nozzle import STANDARD_SEA_LEVEL_PRESSURE_PA, evaluate_nozzle_performance
 from src.sizing.first_pass_sizing import throat_area_from_mass_flow, total_mass_flow_from_thrust
 from src.simulation.stop_conditions import classify_stop_reason
+from src.sizing.geometry_types import GeometryDefinition
 from src.units import bar_to_pa, pa_to_bar
 
 
@@ -134,8 +135,12 @@ def _standardize_history(runtime: dict[str, Any], raw_history: Mapping[str, np.n
         "port_radius_mm": port_radius_m * 1000.0,
         "grain_web_remaining_m": grain_web_remaining_m,
         "grain_web_remaining_mm": grain_web_remaining_m * 1000.0,
+        "oxidizer_liquid_density_kg_m3": np.asarray(raw_history["rho_liq_kg_m3"], dtype=float),
+        "injector_inlet_pressure_pa": np.asarray(raw_history["p_inj_in_pa"], dtype=float),
         "injector_inlet_pressure_bar": np.asarray(raw_history["p_inj_in_pa"], dtype=float) / 1.0e5,
+        "feed_pressure_drop_pa": np.asarray(raw_history["dp_feed_pa"], dtype=float),
         "feed_pressure_drop_bar": np.asarray(raw_history["dp_feed_pa"], dtype=float) / 1.0e5,
+        "injector_delta_p_pa": np.asarray(raw_history["dp_inj_pa"], dtype=float),
         "injector_delta_p_bar": np.asarray(raw_history["dp_inj_pa"], dtype=float) / 1.0e5,
         "dp_feed_over_pc": np.asarray(raw_history["dp_feed_over_pc"], dtype=float),
         "dp_injector_over_pc": np.asarray(raw_history["dp_inj_over_pc"], dtype=float),
@@ -161,7 +166,14 @@ def build_nominal_case_config(config: Mapping[str, Any]) -> dict[str, Any]:
     return deepcopy(dict(config.get("nominal", config)))
 
 
-def prepare_runtime_case(config: Mapping[str, Any], raw_cea_config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def prepare_runtime_case(
+    config: Mapping[str, Any],
+    raw_cea_config: Mapping[str, Any] | None = None,
+    *,
+    frozen_geometry: GeometryDefinition | None = None,
+    injector_geometry: Mapping[str, Any] | None = None,
+    injector_source_override: str | None = None,
+) -> dict[str, Any]:
     nominal = build_nominal_case_config(config)
     seed_case = build_seed_case(nominal["performance"], nominal.get("loss_factors"))
     blowdown_payload = _build_blowdown_payload(nominal)
@@ -173,6 +185,46 @@ def prepare_runtime_case(config: Mapping[str, Any], raw_cea_config: Mapping[str,
         lookup_config=lookup_config,
         raw_cea_config=raw_cea_config or get_default_raw_config(),
     )
+    study_injector_config = dict(config.get("injector_design", config.get("injector_geometry", {})))
+    hydraulic_config = dict(config.get("hydraulic_validation", config.get("coldflow", {})))
+    hydraulic_source = str(hydraulic_config.get("hydraulic_source", "nominal_uncalibrated"))
+    injector_source = (
+        str(injector_source_override)
+        if injector_source_override is not None
+        else (
+            "geometry_backcalculated"
+            if hydraulic_source == "geometry_plus_coldflow"
+            else str(study_injector_config.get("solver_injector_source", "equivalent_manual"))
+        )
+    )
+    if injector_source == "geometry_backcalculated":
+        from src.injector_design import apply_injector_geometry_to_runtime, resolve_injector_geometry_for_runtime
+
+        resolved_injector_geometry = resolve_injector_geometry_for_runtime(
+            config,
+            frozen_geometry=frozen_geometry,
+            injector_geometry=injector_geometry,
+            raw_cea_config=raw_cea_config,
+        )
+        runtime = apply_injector_geometry_to_runtime(
+            runtime,
+            resolved_injector_geometry,
+            discharge_model=study_injector_config,
+        )
+    else:
+        runtime = {
+            **runtime,
+            "derived": {
+                **dict(runtime.get("derived", {})),
+                "injector_source": "equivalent_manual",
+                "injector_geometry_valid": None,
+                "injector_geometry_warnings": [],
+            },
+        }
+    if hydraulic_source != "nominal_uncalibrated":
+        from src.hydraulic_validation import apply_calibration_package_to_runtime
+
+        runtime = apply_calibration_package_to_runtime(runtime, config)
     return {
         "nominal": nominal,
         "seed_case": seed_case,
@@ -181,12 +233,27 @@ def prepare_runtime_case(config: Mapping[str, Any], raw_cea_config: Mapping[str,
     }
 
 
-def run_0d_case(config: Mapping[str, Any], verbose: bool = False) -> dict[str, Any]:
+def run_0d_case(
+    config: Mapping[str, Any],
+    verbose: bool = False,
+    *,
+    frozen_geometry: GeometryDefinition | None = None,
+    injector_geometry: Mapping[str, Any] | None = None,
+    injector_source_override: str | None = None,
+    raw_cea_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     del verbose
     warnings: list[str] = []
+    nominal = build_nominal_case_config(config)
 
     try:
-        prepared = prepare_runtime_case(config)
+        prepared = prepare_runtime_case(
+            config,
+            raw_cea_config=raw_cea_config,
+            frozen_geometry=frozen_geometry,
+            injector_geometry=injector_geometry,
+            injector_source_override=injector_source_override,
+        )
         nominal = prepared["nominal"]
         seed_case = prepared["seed_case"]
         runtime = prepared["runtime"]
@@ -206,6 +273,7 @@ def run_0d_case(config: Mapping[str, Any], verbose: bool = False) -> dict[str, A
             warnings.append(f"Dynamic performance lookup fallback: {runtime['derived']['performance_lookup_warning']}")
         if not runtime["derived"].get("geometry_valid", True):
             warnings.extend(runtime["derived"].get("geometry_warnings", []))
+        warnings.extend(runtime["derived"].get("injector_geometry_warnings", []))
         history = _standardize_history(runtime, simulation["history"])
         return {
             "status": status,
@@ -238,3 +306,4 @@ def run_0d_case(config: Mapping[str, Any], verbose: bool = False) -> dict[str, A
             "runtime": None,
             "resolved_config": nominal,
         }
+

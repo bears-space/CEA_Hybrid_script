@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+import time
 from typing import Any, Mapping
 
 from src.constants import OUTPUT_ROOT
+from src.logging_utils import bind_logger, configure_logging
 from src.workflows.cli import parse_args
 from src.workflows.handlers import dispatch_workflow
 from src.workflows.modes import resolve_mode_alias, summary_lines
 from src.workflows.runtime import prepare_workflow_context
+
+LOGGER = logging.getLogger(__name__)
 
 
 def run_workflow(
@@ -35,7 +40,11 @@ def run_workflow(
 ) -> dict[str, Any]:
     """Run a workflow mode with shared config preparation and artifact handling."""
 
+    configure_logging()
     resolved_mode = resolve_mode_alias(mode)
+    start_time = time.perf_counter()
+    logger = bind_logger(LOGGER, mode=resolved_mode)
+    logger.info("Preparing workflow context.")
     context = prepare_workflow_context(
         mode=resolved_mode,
         config_path=config_path,
@@ -56,13 +65,22 @@ def run_workflow(
         cfd_override=cfd_override,
         testing_override=testing_override,
     )
-    return dispatch_workflow(context)
+    logger = bind_logger(LOGGER, mode=resolved_mode, run_id=context.run.run_id)
+    logger.info("Workflow context prepared; dispatching handler for artifact root '%s'.", context.run.root)
+    try:
+        result = dispatch_workflow(context)
+    except Exception:
+        logger.exception("Workflow execution failed.")
+        raise
+    logger.info("Workflow execution completed in %.2fs.", time.perf_counter() - start_time)
+    return result
 
 
 def main() -> None:
     """CLI entrypoint."""
 
     args = parse_args()
+    configure_logging(level=args.log_level)
     result = run_workflow(
         mode=args.mode,
         config_path=args.config,

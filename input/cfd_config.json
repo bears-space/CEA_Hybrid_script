@@ -1,0 +1,50 @@
+{
+  "cfd_case_source": "nominal_workflow",
+  "cfd_corrections_source": "combined",
+  "enabled_targets": [
+    "injector_plenum_plate_flow",
+    "headend_prechamber_distribution",
+    "nozzle_local_offdesign",
+    "reacting_internal_region_refinement"
+  ],
+  "target_priority_order": [
+    "injector_plenum_plate_flow",
+    "headend_prechamber_distribution",
+    "nozzle_local_offdesign",
+    "reacting_internal_region_refinement"
+  ],
+  "auto_generate_campaign_plan": true,
+  "geometry_input_source": "auto",
+  "geometry_path": "output/geometry/geometry_definition.json",
+  "auto_freeze_geometry_if_missing": true,
+  "injector_geometry_input_source": "auto",
+  "injector_geometry_path": "output/injector_design/injector_geometry.json",
+  "auto_synthesize_injector_if_missing": true,
+  "allow_missing_injector_geometry": true,
+  "include_internal_ballistics_case": true,
+  "include_corner_case_envelope": true,
+  "include_startup_shutdown_points": true,
+  "include_nominal_average_point": true,
+  "include_hot_cold_corner_points": true,
+  "generate_correction_templates": true,
+  "require_coldflow_before_stage1": false,
+  "require_internal_ballistics_before_stage2": true,
+  "require_nozzle_offdesign_before_stage3": true,
+  "preferred_export_formats": ["json", "csv"],
+  "turbulence_model": "sst_k_omega_placeholder",
+  "wall_treatment": "automatic_placeholder",
+  "result_ingest_path": "",
+  "result_ingest_format": "auto",
+  "recommended_solver_classes": {
+    "injector_plenum": "pressure_based_nonreacting",
+    "headend_prechamber": "pressure_based_nonreacting",
+    "nozzle_local": "compressible_rans",
+    "reacting_internal_region": "reacting_rans_placeholder"
+  },
+  "geometry_simplifications": {
+    "suppress_small_fillet_details": true,
+    "collapse_small_hole_chamfers": true,
+    "allow_periodic_sector_model": false,
+    "truncate_far_downstream_volume": true
+  }
+}

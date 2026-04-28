@@ -1,4 +1,4 @@
-"""Comparison helpers between the baseline 0D solver and the Step 3 quasi-1D model."""
+"""Comparison helpers between the baseline 0D solver and the quasi-1D model."""
 
 from __future__ import annotations
 

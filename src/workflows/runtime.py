@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -25,6 +26,8 @@ from src.nozzle_offdesign import merge_nozzle_offdesign_config
 from src.structural import merge_structural_config
 from src.testing import merge_testing_config
 from src.thermal import merge_thermal_config
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,7 @@ def prepare_workflow_context(
     """Create the run root and all merged/normalized config payloads for a workflow."""
 
     run = create_artifact_run(output_root, mode)
+    LOGGER.info("Created artifact run '%s' at '%s'.", run.run_id, run.root)
     config_paths = {
         "design_config": "inline" if design_override is not None else config_path,
         "cea_config": "inline" if cea_override is not None else cea_config_path,
@@ -86,6 +90,7 @@ def prepare_workflow_context(
         "testing_config": "inline" if testing_override is not None else testing_config_path,
     }
     if mode == "cea":
+        LOGGER.info("Using thermochemistry-only workflow context.")
         return WorkflowContext(
             mode=mode,
             run=run,
@@ -136,6 +141,7 @@ def prepare_workflow_context(
     study_config["nozzle_offdesign"] = nozzle_offdesign_config
     study_config["cfd"] = cfd_config
     study_config["testing"] = testing_config
+    LOGGER.info("Prepared merged workflow configs for mode '%s'.", mode)
 
     return WorkflowContext(
         mode=mode,

@@ -1,4 +1,4 @@
-"""Deterministic geometry sizing helpers and sanity checks for Step 2."""
+"""Deterministic geometry sizing helpers and sanity checks for baseline geometry."""
 
 from __future__ import annotations
 
@@ -186,7 +186,7 @@ def evaluate_geometry_checks(
             bool(geometry.nominal_constraint_pass),
             geometry.nominal_constraint_pass,
             {"required": True},
-            "Nominal Step 1 constraints did not all pass before geometry freeze.",
+            "Nominal constraints did not all pass before geometry freeze.",
             hard=bool(geometry_policy["require_nominal_constraints_pass"]),
         )
     if geometry.corner_cases_all_pass is not None:
@@ -194,7 +194,7 @@ def evaluate_geometry_checks(
             bool(geometry.corner_cases_all_pass),
             geometry.corner_cases_all_pass,
             {"required": True},
-            "One or more named Step 1 corner cases failed their constraints.",
+            "One or more named corner cases failed their constraints.",
             hard=bool(geometry_policy["require_corner_constraints_pass"]),
         )
 

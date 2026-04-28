@@ -1,4 +1,4 @@
-"""Axially resolved port marching helpers for the Step 3 quasi-1D solver."""
+"""Axially resolved port marching helpers for the quasi-1D solver."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import math
 
 import numpy as np
 
-from blowdown_hybrid.models import GrainConfig
+from src.blowdown_hybrid.models import GrainConfig
 
 from src.models.regression import PowerLawRegressionModel, fuel_addition_rate_kg_s as cell_fuel_addition_rate_kg_s
 from src.simulation.axial_mesh import AxialMesh
@@ -131,3 +131,4 @@ def march_port_ballistics(
         free_volume_m3=free_volume_m3,
         lstar_m=lstar_m,
     )
+
