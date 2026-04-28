@@ -124,7 +124,7 @@ def _load_and_predict(
     return dataset, context, baseline_predictions, baseline_residuals, baseline_stats
 
 
-def run_coldflow_prediction_workflow(
+def run_hydraulic_prediction_workflow(
     study_config: Mapping[str, Any],
     coldflow_config: Mapping[str, Any],
     output_dir: str | Path,
@@ -148,7 +148,7 @@ def run_coldflow_prediction_workflow(
     }
 
 
-def run_coldflow_calibration_workflow(
+def run_hydraulic_calibration_workflow(
     study_config: Mapping[str, Any],
     coldflow_config: Mapping[str, Any],
     output_dir: str | Path,
@@ -205,7 +205,7 @@ def run_coldflow_calibration_workflow(
     }
 
 
-def run_coldflow_compare_workflow(
+def run_hydraulic_compare_workflow(
     study_config: Mapping[str, Any],
     coldflow_config: Mapping[str, Any],
     output_dir: str | Path,
@@ -218,7 +218,7 @@ def run_coldflow_compare_workflow(
         or str(coldflow_config.get("calibration_package_path", "")).strip()
     )
     if not calibration_path:
-        raise ValueError("coldflow.compare requires comparison_package_path or calibration_package_path.")
+        raise ValueError("hydraulic_validation.compare requires comparison_package_path or calibration_package_path.")
     calibration_package = load_calibration_package(calibration_path)
     calibrated_context = apply_parameter_updates_to_context(
         context,
@@ -253,15 +253,6 @@ def run_coldflow_compare_workflow(
     }
 
 
-def merge_coldflow_config(study_config: Mapping[str, Any], override: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Return the normalized cold-flow config section after applying overrides."""
-
-    override_section = dict(override or {})
-    if "coldflow" in override_section and isinstance(override_section["coldflow"], Mapping):
-        override_section = dict(override_section["coldflow"])
-    return deep_merge(dict(study_config.get("coldflow", {})), override_section)
-
-
 def merge_hydraulic_validation_config(
     study_config: Mapping[str, Any],
     override: Mapping[str, Any] | None = None,
@@ -271,11 +262,4 @@ def merge_hydraulic_validation_config(
     override_section = dict(override or {})
     if "hydraulic_validation" in override_section and isinstance(override_section["hydraulic_validation"], Mapping):
         override_section = dict(override_section["hydraulic_validation"])
-    elif "coldflow" in override_section and isinstance(override_section["coldflow"], Mapping):
-        override_section = dict(override_section["coldflow"])
-    return deep_merge(dict(study_config.get("hydraulic_validation", study_config.get("coldflow", {}))), override_section)
-
-
-run_hydraulic_prediction_workflow = run_coldflow_prediction_workflow
-run_hydraulic_calibration_workflow = run_coldflow_calibration_workflow
-run_hydraulic_compare_workflow = run_coldflow_compare_workflow
+    return deep_merge(dict(study_config.get("hydraulic_validation", {})), override_section)

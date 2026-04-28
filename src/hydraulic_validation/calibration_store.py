@@ -17,7 +17,7 @@ def load_calibration_package(path: str | Path) -> CalibrationPackage:
 
 
 def calibration_path_from_config(config: Mapping[str, Any]) -> Path | None:
-    section = dict(config.get("hydraulic_validation", config.get("coldflow", {})))
+    section = dict(config.get("hydraulic_validation", {}))
     raw_path = str(section.get("calibration_package_path", "")).strip()
     if not raw_path:
         return None
@@ -27,7 +27,7 @@ def calibration_path_from_config(config: Mapping[str, Any]) -> Path | None:
 def apply_calibration_package_to_runtime(runtime: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Any]:
     """Apply a saved calibration package to a prepared runtime payload."""
 
-    hydraulic_config = dict(config.get("hydraulic_validation", config.get("coldflow", {})))
+    hydraulic_config = dict(config.get("hydraulic_validation", {}))
     hydraulic_source = str(hydraulic_config.get("hydraulic_source", "nominal_uncalibrated"))
     if hydraulic_source == "nominal_uncalibrated":
         return dict(runtime)

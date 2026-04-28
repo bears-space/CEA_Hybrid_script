@@ -8,7 +8,7 @@ from pathlib import Path
 
 from src.blowdown_hybrid.hydraulics import feed_pressure_drop_pa
 
-from src.config_schema import build_design_config, normalize_hydraulic_validation_config
+from src.config import build_design_config, normalize_hydraulic_validation_config
 from src.hydraulic_validation import (
     build_prediction_context,
     run_hydraulic_calibration_workflow,

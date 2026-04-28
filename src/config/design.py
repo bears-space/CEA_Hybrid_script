@@ -1254,10 +1254,6 @@ def normalize_testing_config(section: Mapping[str, Any], config: Mapping[str, An
     return _normalize_testing(section, config)
 
 
-def normalize_coldflow_config(section: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Any]:
-    return normalize_hydraulic_validation_config(section, config)
-
-
 def build_design_config(raw: Mapping[str, Any] | None = None) -> dict[str, Any]:
     config = deep_merge(DEFAULT_DESIGN_CONFIG, raw or {})
     config["uncertainty"] = {
@@ -1278,10 +1274,7 @@ def build_design_config(raw: Mapping[str, Any] | None = None) -> dict[str, Any]:
         config.get("injector_design", config.get("injector_geometry", {})),
         config,
     )
-    config["hydraulic_validation"] = _normalize_hydraulic_validation(
-        config.get("hydraulic_validation", config.get("coldflow", {})),
-        config,
-    )
+    config["hydraulic_validation"] = _normalize_hydraulic_validation(config.get("hydraulic_validation", {}), config)
     config["structural"] = _normalize_structural(config.get("structural", {}), config)
     config["thermal"] = _normalize_thermal(config.get("thermal", {}), config)
     config["nozzle_offdesign"] = _normalize_nozzle_offdesign(config.get("nozzle_offdesign", {}), config)
@@ -1289,7 +1282,6 @@ def build_design_config(raw: Mapping[str, Any] | None = None) -> dict[str, Any]:
     config["testing"] = _normalize_testing(config.get("testing", {}), config)
     config["ballistics_1d"] = deepcopy(config["internal_ballistics"])
     config["injector_geometry"] = deepcopy(config["injector_design"])
-    config["coldflow"] = deepcopy(config["hydraulic_validation"])
     config["nominal"]["blowdown"]["ui_mode"] = config["nominal"]["blowdown"].get("ui_mode", "advanced")
     config["nominal"]["blowdown"]["tank"]["initial_temp_k"] = float(
         config["nominal"]["performance"]["tank_temperature_k"]

@@ -7,7 +7,7 @@ import numpy as np
 
 from src.analysis.corner_cases import run_corner_cases
 from src.analysis.sensitivity import run_oat_sensitivity
-from src.config_schema import build_design_config
+from src.config import build_design_config
 from src.simulation.case_runner import run_nominal_case
 
 

@@ -64,9 +64,6 @@ MODE_ALIASES = {
     "freeze_geometry": "geometry",
     "ballistics_1d": "internal_ballistics",
     "synthesize_injector": "injector_design",
-    "coldflow_predict": "hydraulic_predict",
-    "coldflow_calibrate": "hydraulic_calibrate",
-    "coldflow_compare": "hydraulic_compare",
 }
 
 

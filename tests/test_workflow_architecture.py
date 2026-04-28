@@ -5,8 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.config import build_design_config as build_design_config_canonical
-from src.config_schema import build_design_config as build_design_config_compat
+from src.config import build_design_config
 from src.ui.run_metadata import group_artifacts_by_section
 from src.workflows import mode_definitions_payload, resolve_mode_alias
 from src.workflows.modes import RUN_ALL_SEQUENCE
@@ -19,8 +18,9 @@ class WorkflowArchitectureTests(unittest.TestCase):
         self.assertIn("nominal", keys)
         self.assertIn("cfd_plan", keys)
         self.assertIn("test_readiness", keys)
-        self.assertEqual(resolve_mode_alias("coldflow_calibrate"), "hydraulic_calibrate")
         self.assertEqual(resolve_mode_alias("ballistics_1d"), "internal_ballistics")
+        with self.assertRaises(ValueError):
+            resolve_mode_alias("coldflow_calibrate")
 
     def test_run_all_sequence_is_supported_and_excludes_external_ingest_modes(self):
         supported = {item["key"] for item in mode_definitions_payload()}
@@ -31,12 +31,11 @@ class WorkflowArchitectureTests(unittest.TestCase):
         self.assertNotIn("cfd_apply_corrections", RUN_ALL_SEQUENCE)
         self.assertNotIn("test_ingest_data", RUN_ALL_SEQUENCE)
 
-    def test_config_schema_wrapper_matches_canonical_config_package(self):
-        canonical = build_design_config_canonical({})
-        compat = build_design_config_compat({})
-        self.assertEqual(compat["internal_ballistics"], canonical["internal_ballistics"])
-        self.assertEqual(compat["testing"], canonical["testing"])
-        self.assertEqual(compat["nozzle_offdesign"], canonical["nozzle_offdesign"])
+    def test_build_design_config_exposes_canonical_domains(self):
+        canonical = build_design_config({})
+        self.assertIn("internal_ballistics", canonical)
+        self.assertIn("testing", canonical)
+        self.assertIn("nozzle_offdesign", canonical)
 
     def test_ui_artifact_grouping_uses_artifact_index(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

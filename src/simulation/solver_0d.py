@@ -186,7 +186,7 @@ def prepare_runtime_case(
         raw_cea_config=raw_cea_config or get_default_raw_config(),
     )
     study_injector_config = dict(config.get("injector_design", config.get("injector_geometry", {})))
-    hydraulic_config = dict(config.get("hydraulic_validation", config.get("coldflow", {})))
+    hydraulic_config = dict(config.get("hydraulic_validation", {}))
     hydraulic_source = str(hydraulic_config.get("hydraulic_source", "nominal_uncalibrated"))
     injector_source = (
         str(injector_source_override)

@@ -20,7 +20,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional path to a hydraulic-validation override JSON config.",
     )
-    parser.add_argument("--coldflow-config", dest="hydraulic_config", default=None, help=argparse.SUPPRESS)
     parser.add_argument(
         "--structural-config",
         dest="structural_config",

@@ -57,6 +57,3 @@ def run_internal_ballistics_case(
         "constraints": constraints,
         "comparison": comparison,
     }
-
-
-run_ballistics_case = run_internal_ballistics_case

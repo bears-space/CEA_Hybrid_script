@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.config_schema import build_design_config
+from src.config import build_design_config
 from src.injector_design import build_injector_synthesis_case
 from src.simulation.case_runner import run_nominal_case
 from src.sizing.engine_state import EngineState, build_canonical_engine_state

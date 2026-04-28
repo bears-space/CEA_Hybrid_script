@@ -24,7 +24,6 @@ The project is organized by domain rather than by workflow stage.
 - `src/ui/`: workflow dashboard HTTP server.
 
 `main.py` is intentionally minimal and delegates to `src.cli` and `src.workflows.engine`.
-`src/config_schema.py` is retained only as a compatibility wrapper around `src/config/`.
 
 ## Workflow Modes
 

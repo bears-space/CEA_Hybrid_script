@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.config_schema import build_design_config
+from src.config import build_design_config
 from src.simulation.case_runner import run_internal_ballistics_case, run_nominal_case
 from src.sizing.geometry_freeze import freeze_first_pass_geometry
 

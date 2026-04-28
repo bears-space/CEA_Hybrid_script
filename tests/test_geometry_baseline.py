@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from src.analysis.sensitivity import run_oat_sensitivity
-from src.config_schema import build_design_config
+from src.config import build_design_config
 from src.post.geometry_export import write_geometry_outputs
 from src.simulation.case_runner import run_nominal_case
 from src.sizing.geometry_freeze import freeze_first_pass_geometry
